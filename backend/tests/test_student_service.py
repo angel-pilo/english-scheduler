@@ -72,13 +72,13 @@ def _student_data(branch_id: int, suffix: str = "001") -> dict[str, object]:
     return {
         "student_number": f"mat-{suffix}",
         "first_name": "Ana",
-        "last_name": "LÃ³pez",
+        "last_name": "López",
         "email": f"ana-{suffix}@test.local",
         "primary_branch_id": branch_id,
         "phone": " 5551234567 ",
         "address": None,
         "company": "English Partners SA",
-        "emergency_contact_name": "MarÃ­a LÃ³pez",
+        "emergency_contact_name": "María López",
         "emergency_contact_phone": "5559876543",
         "admission_date": date(2026, 7, 21),
         "weekly_hours_limit": Decimal("5.50"),
@@ -144,10 +144,10 @@ def test_admin_status_changes_account_and_self_update_is_limited(session: Sessio
     )
 
     StudentService(session).update_self(
-        user, {"phone": " 5550000000 ", "address": " Nueva direcciÃ³n "}
+        user, {"phone": " 5550000000 ", "address": " Nueva dirección "}
     )
     assert student.phone == "5550000000"
-    assert student.address == "Nueva direcciÃ³n"
+    assert student.address == "Nueva dirección"
 
     StudentService(session).update(
         admin, student.id, {"status": StudentStatus.SUSPENDED}

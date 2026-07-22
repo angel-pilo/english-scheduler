@@ -70,6 +70,31 @@ def update_level(
         _raise_teacher(error)
 
 
+@router.get("/admin/levels/{level_id}", response_model=AcademicLevelOut)
+def get_level(
+    level_id: int,
+    db: Session = Depends(get_db),
+    actor: User = Depends(require_permission(PermissionCode.LEVELS_MANAGE)),
+):
+    try:
+        return LevelService(db).get(actor, level_id)
+    except TeacherError as error:
+        _raise_teacher(error)
+
+
+@router.delete("/admin/levels/{level_id}", status_code=204)
+def deactivate_level(
+    level_id: int,
+    db: Session = Depends(get_db),
+    actor: User = Depends(require_permission(PermissionCode.LEVELS_MANAGE)),
+) -> Response:
+    try:
+        LevelService(db).deactivate(actor, level_id)
+    except TeacherError as error:
+        _raise_teacher(error)
+    return Response(status_code=204)
+
+
 @router.get("/admin/teachers", response_model=list[TeacherOut])
 def list_teachers(
     teacher_status: TeacherStatus | None = Query(default=None, alias="status"),

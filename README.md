@@ -86,6 +86,12 @@ docker compose exec backend python -m app.cli.create_super_admin --email owner@e
 
 Los roles poseen permisos predeterminados. Un administrador puede consultar el catálogo y delegar permisos específicos —con expiración opcional— mediante `/admin/users/{user_id}/permissions`. Las operaciones siempre verifican la organización en backend.
 
+## Niveles, currícula y progreso
+
+Los niveles son configurables por organización mediante `/admin/levels`. Cada nivel puede organizarse en capítulos y temas ordenados usando `/admin/levels/{id}/chapters`, `/admin/chapters/{id}/topics` y sus endpoints de actualización o desactivación. Los usuarios autenticados consultan la estructura activa completa en `GET /curriculum`.
+
+Los cambios de nivel de un alumno se registran con `POST /admin/students/{id}/levels`; el periodo anterior se cierra sin eliminarse y puede consultarse en `/admin/students/{id}/level-history`. Administradores y profesores académicamente relacionados registran el avance individual por tema, mientras cada alumno consulta su propio resumen en `/students/me/academic-progress`.
+
 ## Profesores
 
 Los administradores crean y gestionan perfiles docentes mediante `/admin/teachers`, incluyendo número de empleado, sucursales asignadas y niveles autorizados. El alta genera la misma invitación segura y de un solo uso empleada para alumnos.

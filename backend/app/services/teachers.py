@@ -45,6 +45,17 @@ class LevelService:
             statement = statement.where(AcademicLevel.active.is_(True))
         return list(self.db.scalars(statement.order_by(AcademicLevel.sort_order)))
 
+    def get(self, actor: User, level_id: int) -> AcademicLevel:
+        level = self.db.scalar(
+            select(AcademicLevel).where(
+                AcademicLevel.id == level_id,
+                AcademicLevel.organization_id == self._tenant_id(actor),
+            )
+        )
+        if level is None:
+            raise TeacherNotFoundError("Nivel no encontrado")
+        return level
+
     def create(self, actor: User, data: dict[str, object]) -> AcademicLevel:
         name = str(data["name"]).strip()
         if not name:
@@ -65,17 +76,10 @@ class LevelService:
     def update(
         self, actor: User, level_id: int, changes: dict[str, object]
     ) -> AcademicLevel:
-        level = self.db.scalar(
-            select(AcademicLevel).where(
-                AcademicLevel.id == level_id,
-                AcademicLevel.organization_id == self._tenant_id(actor),
-            )
-        )
-        if level is None:
-            raise TeacherNotFoundError("Nivel no encontrado")
+        level = self.get(actor, level_id)
         required = {"name", "sort_order", "active"}
         if any(changes.get(key) is None for key in required if key in changes):
-            raise TeacherError("Los campos obligatorios no pueden quedar vacÃ­os")
+            raise TeacherError("Los campos obligatorios no pueden quedar vacíos")
         if "name" in changes:
             changes["name"] = str(changes["name"]).strip()
             if not changes["name"]:
@@ -88,6 +92,11 @@ class LevelService:
         self.db.refresh(level)
         return level
 
+    def deactivate(self, actor: User, level_id: int) -> None:
+        level = self.get(actor, level_id)
+        level.active = False
+        self.db.commit()
+
     def _commit(self) -> None:
         try:
             self.db.commit()
@@ -98,7 +107,7 @@ class LevelService:
     @staticmethod
     def _tenant_id(actor: User) -> int:
         if actor.organization_id is None:
-            raise TeacherError("Esta operaciÃ³n requiere contexto de organizaciÃ³n")
+            raise TeacherError("Esta operación requiere contexto de organización")
         return actor.organization_id
 
     @staticmethod
@@ -150,7 +159,7 @@ class TeacherService:
         self._validate_levels(organization_id, level_ids)
         email = str(data["email"]).strip().lower()
         if self.db.scalar(select(User).where(func.lower(User.email) == email)) is not None:
-            raise TeacherConflictError("El correo ya estÃ¡ registrado")
+            raise TeacherConflictError("El correo ya está registrado")
         first_name = self._required_text(data["first_name"], "El nombre es obligatorio")
         last_name = self._required_text(data["last_name"], "Los apellidos son obligatorios")
         user = User(
@@ -166,7 +175,7 @@ class TeacherService:
             organization_id=organization_id,
             user=user,
             employee_number=self._required_text(
-                data["employee_number"], "El nÃºmero de empleado es obligatorio"
+                data["employee_number"], "El número de empleado es obligatorio"
             ).upper(),
             first_name=first_name,
             last_name=last_name,
@@ -186,7 +195,7 @@ class TeacherService:
         except IntegrityError as error:
             self.db.rollback()
             raise TeacherConflictError(
-                "El nÃºmero de empleado o correo ya estÃ¡ registrado"
+                "El número de empleado o correo ya está registrado"
             ) from error
         return teacher, invitation
 
@@ -198,7 +207,7 @@ class TeacherService:
             "employee_number", "first_name", "last_name", "email", "hire_date", "status"
         }
         if any(changes.get(key) is None for key in required if key in changes):
-            raise TeacherError("Los campos obligatorios no pueden quedar vacÃ­os")
+            raise TeacherError("Los campos obligatorios no pueden quedar vacíos")
         branch_ids = None
         level_ids = None
         if "branch_ids" in changes:
@@ -213,11 +222,11 @@ class TeacherService:
             if self.db.scalar(
                 select(User).where(func.lower(User.email) == email, User.id != teacher.user_id)
             ) is not None:
-                raise TeacherConflictError("El correo ya estÃ¡ registrado")
+                raise TeacherConflictError("El correo ya está registrado")
             teacher.user.email = email
         if "employee_number" in changes:
             changes["employee_number"] = self._required_text(
-                changes["employee_number"], "El nÃºmero de empleado es obligatorio"
+                changes["employee_number"], "El número de empleado es obligatorio"
             ).upper()
         if "status" in changes:
             changes["status"] = self._status_value(changes["status"])
@@ -336,7 +345,7 @@ class TeacherService:
             )
         )
         if found != set(ids):
-            raise TeacherError("Una o mÃ¡s sucursales no son vÃ¡lidas")
+            raise TeacherError("Una o más sucursales no son válidas")
 
     def _validate_levels(self, organization_id: int, ids: list[int]) -> None:
         if not ids:
@@ -351,7 +360,7 @@ class TeacherService:
             )
         )
         if found != set(ids):
-            raise TeacherError("Uno o mÃ¡s niveles no son vÃ¡lidos")
+            raise TeacherError("Uno o más niveles no son válidos")
 
     @staticmethod
     def _validate_availability(
@@ -372,15 +381,15 @@ class TeacherService:
         for item in exceptions:
             exception_date = item["exception_date"]
             if exception_date in seen_dates:
-                raise TeacherConflictError("Solo puede existir una excepciÃ³n por fecha")
+                raise TeacherConflictError("Solo puede existir una excepción por fecha")
             seen_dates.add(exception_date)
             start = item.get("start_time")
             end = item.get("end_time")
             if bool(item["is_available"]):
                 if not isinstance(start, time) or not isinstance(end, time) or end <= start:
-                    raise TeacherError("Una excepciÃ³n disponible requiere un horario vÃ¡lido")
+                    raise TeacherError("Una excepción disponible requiere un horario válido")
             elif start is not None or end is not None:
-                raise TeacherError("Una excepciÃ³n no disponible no debe incluir horario")
+                raise TeacherError("Una excepción no disponible no debe incluir horario")
 
     def _commit_or_conflict(self, message: str | None = None) -> None:
         try:
@@ -388,7 +397,7 @@ class TeacherService:
         except IntegrityError as error:
             self.db.rollback()
             raise TeacherConflictError(
-                message or "El nÃºmero de empleado o correo ya estÃ¡ registrado"
+                message or "El número de empleado o correo ya está registrado"
             ) from error
 
     @staticmethod
@@ -401,7 +410,7 @@ class TeacherService:
     @staticmethod
     def _tenant_id(actor: User) -> int:
         if actor.organization_id is None:
-            raise TeacherError("Esta operaciÃ³n requiere contexto de organizaciÃ³n")
+            raise TeacherError("Esta operación requiere contexto de organización")
         return actor.organization_id
 
     @staticmethod

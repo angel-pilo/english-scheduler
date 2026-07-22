@@ -20,6 +20,7 @@ from app.models.enums import StudentStatus
 
 if TYPE_CHECKING:
     from app.models.branch import Branch
+    from app.models.curriculum import StudentLevelHistory, StudentTopicProgress
     from app.models.user import User
 
 
@@ -39,6 +40,7 @@ class StudentProfile(TimestampMixin, Base):
             ondelete="RESTRICT",
         ),
         UniqueConstraint("user_id", name="uq_student_profiles_user_id"),
+        UniqueConstraint("id", "organization_id", name="uq_student_profiles_id_organization"),
         UniqueConstraint(
             "organization_id", "student_number", name="uq_student_profiles_org_number"
         ),
@@ -76,4 +78,14 @@ class StudentProfile(TimestampMixin, Base):
     )
     primary_branch: Mapped["Branch"] = relationship(
         back_populates="student_profiles", overlaps="student_profile,user"
+    )
+    level_history: Mapped[list["StudentLevelHistory"]] = relationship(
+        back_populates="student",
+        cascade="all, delete-orphan",
+        overlaps="level,student_history",
+    )
+    topic_progress: Mapped[list["StudentTopicProgress"]] = relationship(
+        back_populates="student",
+        cascade="all, delete-orphan",
+        overlaps="topic,student_progress,updated_by",
     )

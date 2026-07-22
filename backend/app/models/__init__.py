@@ -6,6 +6,12 @@ from app.models.password_reset_token import PasswordResetToken
 from app.models.rbac import Permission, Role, RolePermission, UserPermission
 from app.models.room import Room
 from app.models.student import StudentProfile
+from app.models.curriculum import (
+    CurriculumChapter,
+    CurriculumTopic,
+    StudentLevelHistory,
+    StudentTopicProgress,
+)
 from app.models.level import AcademicLevel
 from app.models.teacher import (
     TeacherAvailabilityBlock,
@@ -27,6 +33,10 @@ __all__ = [
     "RolePermission",
     "Room",
     "StudentProfile",
+    "CurriculumChapter",
+    "CurriculumTopic",
+    "StudentLevelHistory",
+    "StudentTopicProgress",
     "AcademicLevel",
     "TeacherAvailabilityBlock",
     "TeacherAvailabilityException",

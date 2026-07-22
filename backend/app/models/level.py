@@ -6,6 +6,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.db.base import Base, TimestampMixin
 
 if TYPE_CHECKING:
+    from app.models.curriculum import CurriculumChapter, StudentLevelHistory
     from app.models.teacher import TeacherLevelAssignment
 
 
@@ -33,4 +34,10 @@ class AcademicLevel(TimestampMixin, Base):
 
     teacher_assignments: Mapped[list["TeacherLevelAssignment"]] = relationship(
         back_populates="level", cascade="all, delete-orphan"
+    )
+    chapters: Mapped[list["CurriculumChapter"]] = relationship(
+        back_populates="level", cascade="all, delete-orphan"
+    )
+    student_history: Mapped[list["StudentLevelHistory"]] = relationship(
+        back_populates="level"
     )

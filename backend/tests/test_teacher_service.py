@@ -73,7 +73,7 @@ def _teacher_data(branch_ids: list[int], level_ids: list[int]) -> dict[str, obje
     return {
         "employee_number": "emp-001",
         "first_name": "Juan",
-        "last_name": "PÃ©rez",
+        "last_name": "Pérez",
         "email": "juan@test.local",
         "phone": " 5551234567 ",
         "hire_date": date(2026, 7, 22),
@@ -88,7 +88,7 @@ def test_create_teacher_assigns_branches_levels_and_invitation(session: Session)
     admin, branch, second = _tenant(session, "Uno")
     level = LevelService(session).create(
         admin,
-        {"name": "BÃ¡sico 1", "description": None, "sort_order": 1, "default_capacity": 8},
+        {"name": "Básico 1", "description": None, "sort_order": 1, "default_capacity": 8},
     )
 
     teacher, invitation = TeacherService(session).create(

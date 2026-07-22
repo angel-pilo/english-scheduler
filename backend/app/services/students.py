@@ -143,7 +143,7 @@ class StudentService:
             "status",
         }
         if any(changes.get(field) is None for field in required_fields if field in changes):
-            raise StudentError("Los campos obligatorios no pueden quedar vacÃ­os")
+            raise StudentError("Los campos obligatorios no pueden quedar vacíos")
         if administrative and "primary_branch_id" in changes:
             branch_id = int(changes["primary_branch_id"])
             self._active_branch(student.organization_id, branch_id)

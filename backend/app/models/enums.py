@@ -28,6 +28,7 @@ class PermissionCode(str, Enum):
     OWN_PROFILE_VIEW = "own.profile.view"
     STUDENTS_MANAGE = "students.manage"
     TEACHERS_MANAGE = "teachers.manage"
+    STUDENT_PROGRESS_MANAGE = "student.progress.manage"
 
 
 class StudentStatus(str, Enum):
@@ -43,3 +44,16 @@ class TeacherStatus(str, Enum):
     INACTIVE = "INACTIVE"
     SUSPENDED = "SUSPENDED"
     TERMINATED = "TERMINATED"
+
+
+class TopicStatus(str, Enum):
+    ACTIVE = "ACTIVE"
+    INACTIVE = "INACTIVE"
+    ARCHIVED = "ARCHIVED"
+
+
+class TopicProgressStatus(str, Enum):
+    NOT_STARTED = "NOT_STARTED"
+    IN_PROGRESS = "IN_PROGRESS"
+    COMPLETED = "COMPLETED"
+    NEEDS_REVIEW = "NEEDS_REVIEW"
