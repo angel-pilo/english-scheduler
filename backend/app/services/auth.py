@@ -61,8 +61,10 @@ class AuthService:
         if user.locked_until is not None and self._as_utc(user.locked_until) > now:
             raise AccountLockedError
 
+        organization_inactive = user.organization is not None and not user.organization.active
         if (
             not user.active
+            or organization_inactive
             or user.hashed_password is None
             or not verify_password(password, user.hashed_password)
         ):

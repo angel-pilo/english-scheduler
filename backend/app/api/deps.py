@@ -48,6 +48,7 @@ def get_auth_context(
         or auth_session.revoked_at is not None
         or _as_utc(auth_session.expires_at) <= now
         or not user.active
+        or (user.organization is not None and not user.organization.active)
     ):
         raise unauthorized
     return AuthContext(user=user, session=auth_session)

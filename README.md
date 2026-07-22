@@ -75,3 +75,13 @@ La API expone los siguientes flujos:
 - `POST /auth/reset-password`: cambia la contraseña y revoca las sesiones anteriores.
 
 En `ENVIRONMENT=development`, las respuestas de invitación y recuperación incluyen el enlace necesario para probar localmente. En producción esos enlaces no se devuelven y deberán enviarse mediante el servicio de correo que se conectará en la fase de notificaciones.
+
+## SUPER_ADMIN y permisos delegados
+
+El primer propietario de la plataforma se crea de forma interactiva para no guardar su contraseña en archivos ni historial de comandos:
+
+```powershell
+docker compose exec backend python -m app.cli.create_super_admin --email owner@example.com
+```
+
+Los roles poseen permisos predeterminados. Un administrador puede consultar el catálogo y delegar permisos específicos —con expiración opcional— mediante `/admin/users/{user_id}/permissions`. Las operaciones siempre verifican la organización en backend.
