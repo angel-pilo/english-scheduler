@@ -5,6 +5,7 @@ from app.models.org import Organization
 from app.models.password_reset_token import PasswordResetToken
 from app.models.rbac import Permission, Role, RolePermission, UserPermission
 from app.models.room import Room
+from app.models.student import StudentProfile
 from app.models.user import User
 
 __all__ = [
@@ -17,6 +18,7 @@ __all__ = [
     "Role",
     "RolePermission",
     "Room",
+    "StudentProfile",
     "User",
     "UserPermission",
 ]

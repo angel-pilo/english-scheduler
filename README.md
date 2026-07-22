@@ -69,7 +69,7 @@ La API expone los siguientes flujos:
 - `POST /auth/refresh`: rota el refresh token.
 - `POST /auth/logout`: revoca la sesión actual.
 - `GET /auth/me`: devuelve el usuario autenticado.
-- `POST /admin/invitations`: invita a un profesor o alumno sin asignarle contraseña.
+- `POST /admin/invitations`: invita a un profesor sin asignarle contraseña.
 - `POST /auth/activate`: activa una invitación de un solo uso.
 - `POST /auth/forgot-password`: solicita recuperación sin revelar si la cuenta existe.
 - `POST /auth/reset-password`: cambia la contraseña y revoca las sesiones anteriores.
@@ -85,6 +85,12 @@ docker compose exec backend python -m app.cli.create_super_admin --email owner@e
 ```
 
 Los roles poseen permisos predeterminados. Un administrador puede consultar el catálogo y delegar permisos específicos —con expiración opcional— mediante `/admin/users/{user_id}/permissions`. Las operaciones siempre verifican la organización en backend.
+
+## Alumnos
+
+El alta se realiza con `POST /admin/students`. Esta operación crea el perfil académico, una cuenta inactiva y una invitación de activación. Los administradores pueden listar, filtrar, consultar, actualizar y dar de baja lógicamente mediante `/admin/students`.
+
+Una vez activada la cuenta, cada alumno puede consultar y actualizar sus datos de contacto con `GET /students/me` y `PATCH /students/me`. La matrícula, sucursal, límite de horas, estado y notas administrativas solamente pueden modificarse desde el flujo administrativo.
 
 ## Sucursales y salones
 

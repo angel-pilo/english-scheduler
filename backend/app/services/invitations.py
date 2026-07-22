@@ -13,7 +13,7 @@ from app.core.security import (
     validate_password_strength,
 )
 from app.models.branch import Branch
-from app.models.enums import UserRole
+from app.models.enums import StudentStatus, UserRole
 from app.models.invitation import Invitation
 from app.models.user import User
 
@@ -50,8 +50,8 @@ class InvitationService:
         role: str,
         branch_id: int,
     ) -> CreatedInvitation:
-        if role not in (UserRole.TEACHER.value, UserRole.STUDENT.value):
-            raise InvitationError("El rol debe ser TEACHER o STUDENT")
+        if role != UserRole.TEACHER.value:
+            raise InvitationError("Los alumnos deben darse de alta mediante /admin/students")
 
         branch = self.db.scalar(
             select(Branch).where(
@@ -81,6 +81,17 @@ class InvitationService:
         )
         self.db.add(user)
         self.db.flush()
+
+        return self.create_for_existing_user(admin=admin, user=user)
+
+    def create_for_existing_user(self, *, admin: User, user: User) -> CreatedInvitation:
+        if user.active or user.hashed_password is not None:
+            raise InvitationError("El usuario ya tiene una cuenta activa")
+        if (
+            admin.role != UserRole.SUPER_ADMIN.value
+            and admin.organization_id != user.organization_id
+        ):
+            raise InvitationError("El usuario no pertenece a esta organización")
 
         raw_token = create_refresh_token()
         invitation = Invitation(
@@ -117,6 +128,10 @@ class InvitationService:
             or invitation.used_at is not None
             or self._as_utc(invitation.expires_at) <= now
             or invitation.user.active
+            or (
+                invitation.user.student_profile is not None
+                and invitation.user.student_profile.status != StudentStatus.ACTIVE.value
+            )
         ):
             raise InvalidInvitationError("Invitación inválida o expirada")
 

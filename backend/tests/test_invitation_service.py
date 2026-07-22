@@ -47,7 +47,7 @@ def test_invitation_activates_account_once(
         admin=admin,
         name="Student One",
         email="STUDENT@ACADEMIA.TEST",
-        role=UserRole.STUDENT.value,
+        role=UserRole.TEACHER.value,
         branch_id=branch.id,
     )
     assert created.activation_url is not None
@@ -89,6 +89,6 @@ def test_admin_cannot_invite_into_another_tenant(
             admin=admin,
             name="Student Two",
             email="student2@academia.test",
-            role=UserRole.STUDENT.value,
+            role=UserRole.TEACHER.value,
             branch_id=other_branch.id,
         )

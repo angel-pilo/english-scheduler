@@ -2,7 +2,7 @@ from typing import TYPE_CHECKING
 
 from datetime import datetime
 
-from sqlalchemy import Boolean, CheckConstraint, DateTime, ForeignKey, Integer, String
+from sqlalchemy import Boolean, CheckConstraint, DateTime, ForeignKey, Integer, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base, TimestampMixin
@@ -13,6 +13,7 @@ if TYPE_CHECKING:
     from app.models.password_reset_token import PasswordResetToken
     from app.models.branch import Branch
     from app.models.org import Organization
+    from app.models.student import StudentProfile
 
 
 class User(TimestampMixin, Base):
@@ -23,6 +24,7 @@ class User(TimestampMixin, Base):
             "OR (role <> 'SUPER_ADMIN' AND organization_id IS NOT NULL)",
             name="tenant_scope",
         ),
+        UniqueConstraint("id", "organization_id", name="uq_users_id_organization"),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -55,4 +57,10 @@ class User(TimestampMixin, Base):
     )
     password_reset_tokens: Mapped[list["PasswordResetToken"]] = relationship(
         back_populates="user", cascade="all, delete-orphan"
+    )
+    student_profile: Mapped["StudentProfile | None"] = relationship(
+        back_populates="user",
+        uselist=False,
+        cascade="all, delete-orphan",
+        overlaps="primary_branch,student_profiles",
     )

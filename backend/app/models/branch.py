@@ -9,6 +9,7 @@ if TYPE_CHECKING:
     from app.models.org import Organization
     from app.models.room import Room
     from app.models.user import User
+    from app.models.student import StudentProfile
 
 
 class Branch(TimestampMixin, Base):
@@ -32,4 +33,7 @@ class Branch(TimestampMixin, Base):
     users: Mapped[list["User"]] = relationship(back_populates="branch")
     rooms: Mapped[list["Room"]] = relationship(
         back_populates="branch", cascade="all, delete-orphan"
+    )
+    student_profiles: Mapped[list["StudentProfile"]] = relationship(
+        back_populates="primary_branch", overlaps="student_profile,user"
     )

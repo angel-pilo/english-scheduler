@@ -26,3 +26,12 @@ class PermissionCode(str, Enum):
     STUDENT_BOOKINGS_MANAGE = "student.bookings.manage"
     OWN_SCHEDULE_VIEW = "own.schedule.view"
     OWN_PROFILE_VIEW = "own.profile.view"
+    STUDENTS_MANAGE = "students.manage"
+
+
+class StudentStatus(str, Enum):
+    ACTIVE = "ACTIVE"
+    INACTIVE = "INACTIVE"
+    SUSPENDED = "SUSPENDED"
+    GRADUATED = "GRADUATED"
+    WITHDRAWN = "WITHDRAWN"
