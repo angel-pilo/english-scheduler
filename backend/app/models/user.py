@@ -1,16 +1,37 @@
-﻿from sqlalchemy import ForeignKey, String, Boolean
-from sqlalchemy.orm import Mapped, mapped_column
-from app.db.base import Base
+from typing import TYPE_CHECKING
 
-class User(Base):
+from sqlalchemy import Boolean, CheckConstraint, ForeignKey, String
+from sqlalchemy.orm import Mapped, mapped_column, relationship
+
+from app.db.base import Base, TimestampMixin
+
+if TYPE_CHECKING:
+    from app.models.branch import Branch
+    from app.models.org import Organization
+
+
+class User(TimestampMixin, Base):
     __tablename__ = "users"
+    __table_args__ = (
+        CheckConstraint(
+            "(role = 'SUPER_ADMIN' AND organization_id IS NULL AND branch_id IS NULL) "
+            "OR (role <> 'SUPER_ADMIN' AND organization_id IS NOT NULL)",
+            name="tenant_scope",
+        ),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    organization_id: Mapped[int] = mapped_column(ForeignKey("organizations.id"), index=True)
-    branch_id: Mapped[int] = mapped_column(ForeignKey("branches.id"), index=True)
-
+    organization_id: Mapped[int | None] = mapped_column(
+        ForeignKey("organizations.id", ondelete="RESTRICT"), index=True, nullable=True
+    )
+    branch_id: Mapped[int | None] = mapped_column(
+        ForeignKey("branches.id", ondelete="RESTRICT"), index=True, nullable=True
+    )
     role: Mapped[str] = mapped_column(String(20), index=True)
     name: Mapped[str] = mapped_column(String(120))
     email: Mapped[str] = mapped_column(String(180), unique=True, index=True)
     hashed_password: Mapped[str] = mapped_column(String(255))
-    active: Mapped[bool] = mapped_column(Boolean, default=True)
+    active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+
+    organization: Mapped["Organization | None"] = relationship(back_populates="users")
+    branch: Mapped["Branch | None"] = relationship(back_populates="users")

@@ -3,6 +3,7 @@ from sqlalchemy.orm import Session
 from app.db.session import get_db
 from app.api.deps import require_role
 from app.models.user import User
+from app.models.branch import Branch
 from app.models.enums import UserRole
 from app.schemas.admin import UserCreateIn, UserOut
 from app.core.security import hash_password
@@ -17,6 +18,13 @@ def create_user(payload: UserCreateIn, db: Session = Depends(get_db), admin: Use
     exists = db.query(User).filter(User.email == payload.email).first()
     if exists:
         raise HTTPException(status_code=409, detail="Email ya registrado")
+
+    branch = db.query(Branch).filter(
+        Branch.id == payload.branch_id,
+        Branch.organization_id == admin.organization_id,
+    ).first()
+    if not branch:
+        raise HTTPException(status_code=400, detail="Sucursal inválida para esta organización")
 
     user = User(
         organization_id=admin.organization_id,

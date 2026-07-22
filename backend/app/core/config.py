@@ -9,7 +9,9 @@ class Settings(BaseSettings):
     access_token_expire_minutes: int = 60
 
     bootstrap_org_name: str = "Mi Escuela"
+    bootstrap_org_slug: str = "mi-escuela"
     bootstrap_branch_name: str = "Matriz"
+    bootstrap_branch_code: str = "MATRIZ"
     bootstrap_admin_email: str = "admin@escuela.com"
     bootstrap_admin_password: str = "Admin12345*"
 

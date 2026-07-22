@@ -48,3 +48,15 @@ docker compose down
 | Documentación API | <http://localhost:8000/docs> |
 
 La página inicial del frontend comprueba automáticamente la conexión con `/health`.
+
+## Migraciones de base de datos
+
+El backend ejecuta `alembic upgrade head` al iniciar. Para revisar el estado o crear una migración desde PowerShell:
+
+```powershell
+docker compose exec backend alembic current
+docker compose exec backend alembic history
+docker compose exec backend alembic revision --autogenerate -m "describir cambio"
+```
+
+No uses `Base.metadata.create_all()` para evolucionar el esquema. Todos los cambios deben quedar representados mediante Alembic.

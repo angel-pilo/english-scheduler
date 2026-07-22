@@ -1,4 +1,5 @@
-﻿from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, ConfigDict, EmailStr, Field
+
 
 class UserCreateIn(BaseModel):
     name: str = Field(min_length=2, max_length=120)
@@ -7,7 +8,10 @@ class UserCreateIn(BaseModel):
     role: str  # TEACHER o STUDENT
     branch_id: int
 
+
 class UserOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: int
     name: str
     email: EmailStr
