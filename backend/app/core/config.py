@@ -7,6 +7,9 @@ class Settings(BaseSettings):
     jwt_secret: str
     jwt_algorithm: str = "HS256"
     access_token_expire_minutes: int = 60
+    refresh_token_expire_days: int = 30
+    max_login_attempts: int = 5
+    login_lock_minutes: int = 15
 
     bootstrap_org_name: str = "Mi Escuela"
     bootstrap_org_slug: str = "mi-escuela"
