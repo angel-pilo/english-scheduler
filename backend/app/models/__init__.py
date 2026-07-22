@@ -4,6 +4,7 @@ from app.models.invitation import Invitation
 from app.models.org import Organization
 from app.models.password_reset_token import PasswordResetToken
 from app.models.rbac import Permission, Role, RolePermission, UserPermission
+from app.models.room import Room
 from app.models.user import User
 
 __all__ = [
@@ -15,6 +16,7 @@ __all__ = [
     "Permission",
     "Role",
     "RolePermission",
+    "Room",
     "User",
     "UserPermission",
 ]

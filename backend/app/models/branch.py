@@ -7,6 +7,7 @@ from app.db.base import Base, TimestampMixin
 
 if TYPE_CHECKING:
     from app.models.org import Organization
+    from app.models.room import Room
     from app.models.user import User
 
 
@@ -15,6 +16,7 @@ class Branch(TimestampMixin, Base):
     __table_args__ = (
         UniqueConstraint("organization_id", "name", name="uq_branches_organization_name"),
         UniqueConstraint("organization_id", "code", name="uq_branches_organization_code"),
+        UniqueConstraint("id", "organization_id", name="uq_branches_id_organization"),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -28,3 +30,6 @@ class Branch(TimestampMixin, Base):
 
     organization: Mapped["Organization"] = relationship(back_populates="branches")
     users: Mapped[list["User"]] = relationship(back_populates="branch")
+    rooms: Mapped[list["Room"]] = relationship(
+        back_populates="branch", cascade="all, delete-orphan"
+    )

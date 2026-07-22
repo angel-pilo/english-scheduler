@@ -85,3 +85,14 @@ docker compose exec backend python -m app.cli.create_super_admin --email owner@e
 ```
 
 Los roles poseen permisos predeterminados. Un administrador puede consultar el catálogo y delegar permisos específicos —con expiración opcional— mediante `/admin/users/{user_id}/permissions`. Las operaciones siempre verifican la organización en backend.
+
+## Sucursales y salones
+
+Los administradores gestionan ubicaciones mediante:
+
+- `/admin/branches`: listar y crear sucursales.
+- `/admin/branches/{id}`: consultar, actualizar o desactivar una sucursal.
+- `/admin/rooms`: listar y crear salones, opcionalmente filtrados por sucursal.
+- `/admin/rooms/{id}`: consultar, actualizar o desactivar un salón.
+
+Los `DELETE` son borrados lógicos. Desactivar una sucursal también desactiva sus salones. La base de datos impide que un salón quede asociado a una sucursal de otra organización.
