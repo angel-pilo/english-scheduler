@@ -86,6 +86,12 @@ docker compose exec backend python -m app.cli.create_super_admin --email owner@e
 
 Los roles poseen permisos predeterminados. Un administrador puede consultar el catálogo y delegar permisos específicos —con expiración opcional— mediante `/admin/users/{user_id}/permissions`. Las operaciones siempre verifican la organización en backend.
 
+## Horarios recurrentes
+
+Los administradores configuran plantillas semanales mediante `/admin/schedule-templates`, indicando nivel, sucursal, salón, horario, vigencia y cupo. El cupo efectivo se calcula como el menor entre el cupo configurado, el predeterminado del nivel y la capacidad física del salón.
+
+Los cierres y bloqueos de calendario se registran en `/admin/schedule-exceptions`. Pueden afectar a toda la organización, una sucursal, un salón o un profesor durante el día completo o un rango horario. Estas excepciones tienen prioridad sobre las plantillas cuando se generen las sesiones reales en la Fase 10.
+
 ## Niveles, currícula y progreso
 
 Los niveles son configurables por organización mediante `/admin/levels`. Cada nivel puede organizarse en capítulos y temas ordenados usando `/admin/levels/{id}/chapters`, `/admin/chapters/{id}/topics` y sus endpoints de actualización o desactivación. Los usuarios autenticados consultan la estructura activa completa en `GET /curriculum`.

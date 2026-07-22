@@ -20,6 +20,9 @@ class Room(TimestampMixin, Base):
         ),
         UniqueConstraint("branch_id", "name", name="uq_rooms_branch_name"),
         UniqueConstraint("branch_id", "code", name="uq_rooms_branch_code"),
+        UniqueConstraint(
+            "id", "branch_id", "organization_id", name="uq_rooms_id_branch_organization"
+        ),
         CheckConstraint("capacity > 0", name="capacity_positive"),
     )
 

@@ -57,3 +57,10 @@ class TopicProgressStatus(str, Enum):
     IN_PROGRESS = "IN_PROGRESS"
     COMPLETED = "COMPLETED"
     NEEDS_REVIEW = "NEEDS_REVIEW"
+
+
+class ScheduleExceptionScope(str, Enum):
+    ORGANIZATION = "ORGANIZATION"
+    BRANCH = "BRANCH"
+    ROOM = "ROOM"
+    TEACHER = "TEACHER"
