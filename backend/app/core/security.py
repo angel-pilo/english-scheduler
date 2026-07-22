@@ -59,3 +59,16 @@ def create_refresh_token() -> str:
 
 def hash_token(token: str) -> str:
     return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+
+def validate_password_strength(password: str) -> None:
+    if len(password) < 12:
+        raise ValueError("La contraseña debe tener al menos 12 caracteres")
+    if not any(character.islower() for character in password):
+        raise ValueError("La contraseña debe incluir una minúscula")
+    if not any(character.isupper() for character in password):
+        raise ValueError("La contraseña debe incluir una mayúscula")
+    if not any(character.isdigit() for character in password):
+        raise ValueError("La contraseña debe incluir un número")
+    if password.isalnum():
+        raise ValueError("La contraseña debe incluir un símbolo")

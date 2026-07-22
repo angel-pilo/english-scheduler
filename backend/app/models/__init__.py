@@ -1,6 +1,7 @@
+from app.models.auth_session import AuthSession
 from app.models.branch import Branch
+from app.models.invitation import Invitation
 from app.models.org import Organization
 from app.models.user import User
 
-__all__ = ["AuthSession", "Branch", "Organization", "User"]
-from app.models.auth_session import AuthSession
+__all__ = ["AuthSession", "Branch", "Invitation", "Organization", "User"]

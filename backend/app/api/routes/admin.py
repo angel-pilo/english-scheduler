@@ -1,41 +1,46 @@
-﻿from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
-from app.db.session import get_db
+
 from app.api.deps import require_role
-from app.models.user import User
-from app.models.branch import Branch
+from app.db.session import get_db
 from app.models.enums import UserRole
-from app.schemas.admin import UserCreateIn, UserOut
-from app.core.security import hash_password
+from app.models.user import User
+from app.schemas.admin import InvitationCreateIn, InvitationOut
+from app.services.invitations import (
+    InvitationConflictError,
+    InvitationError,
+    InvitationService,
+)
+
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
-@router.post("/users", response_model=UserOut)
-def create_user(payload: UserCreateIn, db: Session = Depends(get_db), admin: User = Depends(require_role(UserRole.ADMIN.value))):
-    if payload.role not in (UserRole.TEACHER.value, UserRole.STUDENT.value):
-        raise HTTPException(status_code=400, detail="role debe ser TEACHER o STUDENT")
 
-    exists = db.query(User).filter(User.email == payload.email).first()
-    if exists:
-        raise HTTPException(status_code=409, detail="Email ya registrado")
+@router.post(
+    "/invitations", response_model=InvitationOut, status_code=status.HTTP_201_CREATED
+)
+def create_invitation(
+    payload: InvitationCreateIn,
+    db: Session = Depends(get_db),
+    admin: User = Depends(require_role(UserRole.ADMIN.value)),
+) -> InvitationOut:
+    try:
+        created = InvitationService(db).create(
+            admin=admin,
+            name=payload.name,
+            email=payload.email,
+            role=payload.role,
+            branch_id=payload.branch_id,
+        )
+    except InvitationConflictError as error:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(error))
+    except InvitationError as error:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(error))
 
-    branch = db.query(Branch).filter(
-        Branch.id == payload.branch_id,
-        Branch.organization_id == admin.organization_id,
-    ).first()
-    if not branch:
-        raise HTTPException(status_code=400, detail="Sucursal inválida para esta organización")
-
-    user = User(
-        organization_id=admin.organization_id,
-        branch_id=payload.branch_id,
-        role=payload.role,
-        name=payload.name,
-        email=payload.email,
-        hashed_password=hash_password(payload.password),
-        active=True,
+    return InvitationOut(
+        id=created.invitation.id,
+        user_id=created.invitation.user_id,
+        email=created.email,
+        expires_at=created.invitation.expires_at,
+        activation_url=created.activation_url,
     )
-    db.add(user)
-    db.commit()
-    db.refresh(user)
-    return user

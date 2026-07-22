@@ -61,7 +61,11 @@ class AuthService:
         if user.locked_until is not None and self._as_utc(user.locked_until) > now:
             raise AccountLockedError
 
-        if not user.active or not verify_password(password, user.hashed_password):
+        if (
+            not user.active
+            or user.hashed_password is None
+            or not verify_password(password, user.hashed_password)
+        ):
             self._record_failed_attempt(user, now)
             raise InvalidCredentialsError
 

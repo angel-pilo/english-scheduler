@@ -10,6 +10,9 @@ class Settings(BaseSettings):
     refresh_token_expire_days: int = 30
     max_login_attempts: int = 5
     login_lock_minutes: int = 15
+    invitation_expire_hours: int = 72
+    frontend_url: str = "http://localhost:5173"
+    environment: str = "development"
 
     bootstrap_org_name: str = "Mi Escuela"
     bootstrap_org_slug: str = "mi-escuela"

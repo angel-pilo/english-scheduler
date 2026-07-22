@@ -17,6 +17,16 @@ class RefreshIn(BaseModel):
     refresh_token: str = Field(min_length=32, max_length=512)
 
 
+class ActivateAccountIn(BaseModel):
+    token: str = Field(min_length=32, max_length=512)
+    password: str = Field(min_length=12, max_length=128)
+    password_confirmation: str = Field(min_length=12, max_length=128)
+
+
+class MessageOut(BaseModel):
+    message: str
+
+
 class MeOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

@@ -9,6 +9,7 @@ from app.db.base import Base, TimestampMixin
 
 if TYPE_CHECKING:
     from app.models.auth_session import AuthSession
+    from app.models.invitation import Invitation
     from app.models.branch import Branch
     from app.models.org import Organization
 
@@ -33,7 +34,7 @@ class User(TimestampMixin, Base):
     role: Mapped[str] = mapped_column(String(20), index=True)
     name: Mapped[str] = mapped_column(String(120))
     email: Mapped[str] = mapped_column(String(180), unique=True, index=True)
-    hashed_password: Mapped[str] = mapped_column(String(255))
+    hashed_password: Mapped[str | None] = mapped_column(String(255), nullable=True)
     active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     failed_login_attempts: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     locked_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
@@ -43,4 +44,9 @@ class User(TimestampMixin, Base):
     branch: Mapped["Branch | None"] = relationship(back_populates="users")
     auth_sessions: Mapped[list["AuthSession"]] = relationship(
         back_populates="user", cascade="all, delete-orphan"
+    )
+    invitations: Mapped[list["Invitation"]] = relationship(
+        back_populates="user",
+        foreign_keys="Invitation.user_id",
+        cascade="all, delete-orphan",
     )

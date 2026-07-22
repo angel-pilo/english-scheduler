@@ -4,13 +4,14 @@ from sqlalchemy.orm import Session
 from app.api.deps import AuthContext, get_auth_context, get_current_user
 from app.db.session import get_db
 from app.models.user import User
-from app.schemas.auth import LoginIn, MeOut, RefreshIn, TokenOut
+from app.schemas.auth import ActivateAccountIn, LoginIn, MeOut, MessageOut, RefreshIn, TokenOut
 from app.services.auth import (
     AccountLockedError,
     AuthService,
     InvalidCredentialsError,
     InvalidRefreshTokenError,
 )
+from app.services.invitations import InvitationError, InvitationService, InvalidInvitationError
 
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -45,6 +46,21 @@ def refresh(data: RefreshIn, db: Session = Depends(get_db)) -> TokenOut:
             detail="Refresh token inválido o expirado",
         )
     return TokenOut(**tokens.__dict__)
+
+
+@router.post("/activate", response_model=MessageOut)
+def activate(data: ActivateAccountIn, db: Session = Depends(get_db)) -> MessageOut:
+    try:
+        InvitationService(db).activate(
+            token=data.token,
+            password=data.password,
+            password_confirmation=data.password_confirmation,
+        )
+    except InvalidInvitationError as error:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(error))
+    except InvitationError as error:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(error))
+    return MessageOut(message="Cuenta activada correctamente")
 
 
 @router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)
