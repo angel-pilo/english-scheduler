@@ -39,4 +39,12 @@ Para detener los servicios, presiona `Ctrl+C`. Si los ejecutaste en segundo plan
 docker compose down
 ```
 
-El frontend se agregará en una etapa posterior y no forma parte todavía de Compose.
+## Servicios locales
+
+| Servicio | URL |
+| --- | --- |
+| Frontend Vue | <http://localhost:5173> |
+| API FastAPI | <http://localhost:8000> |
+| Documentación API | <http://localhost:8000/docs> |
+
+La página inicial del frontend comprueba automáticamente la conexión con `/health`.
