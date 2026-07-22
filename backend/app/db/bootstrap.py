@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 from app.core.config import settings
 from app.core.security import hash_password
 from app.models.branch import Branch
+from app.models.booking import BookingPolicy
 from app.models.enums import UserRole
 from app.models.org import Organization
 from app.models.user import User
@@ -55,15 +56,35 @@ def bootstrap_initial_data(db: Session) -> None:
 
     admin = db.scalar(select(User).where(User.email == settings.bootstrap_admin_email))
     if admin is None:
+        admin = User(
+            organization_id=organization.id,
+            branch_id=branch.id,
+            role=UserRole.ADMIN.value,
+            name="Admin",
+            email=settings.bootstrap_admin_email,
+            hashed_password=hash_password(settings.bootstrap_admin_password),
+            active=True,
+        )
+        db.add(admin)
+        db.flush()
+
+    policy = db.scalar(
+        select(BookingPolicy).where(
+            BookingPolicy.organization_id == organization.id,
+            BookingPolicy.branch_id.is_(None),
+        )
+    )
+    if policy is None:
         db.add(
-            User(
+            BookingPolicy(
                 organization_id=organization.id,
-                branch_id=branch.id,
-                role=UserRole.ADMIN.value,
-                name="Admin",
-                email=settings.bootstrap_admin_email,
-                hashed_password=hash_password(settings.bootstrap_admin_password),
-                active=True,
+                branch_id=None,
+                minimum_booking_notice_hours=24,
+                minimum_cancellation_notice_hours=24,
+                earliest_booking_week_offset=1,
+                latest_booking_week_offset=1,
+                created_by_user_id=admin.id,
+                updated_by_user_id=admin.id,
             )
         )
 

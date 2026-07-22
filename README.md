@@ -98,6 +98,12 @@ Los cierres y bloqueos de calendario se registran en `/admin/schedule-exceptions
 
 Los administradores consultan y ajustan sesiones mediante `/admin/class-sessions`. Una sesión no puede publicarse sin profesor y su cupo efectivo nunca supera la capacidad física del salón. Cada profesor consulta únicamente sus sesiones publicadas en `GET /teachers/me/sessions`.
 
+## Reservaciones
+
+Las políticas de reservación se configuran globalmente o por sucursal mediante `/admin/booking-policies`. La configuración inicial exige 24 horas de anticipación para reservar o cancelar y permite reservar la semana siguiente; también admite múltiples ventanas horarias por día.
+
+Los alumnos consultan lugares y motivos de indisponibilidad en `/students/me/available-sessions`, reservan desde `/students/me/bookings` y revisan su consumo semanal. El backend valida nivel actual, sucursal permitida, vigencia, cupo, cruces de horario y límite de horas. Una cancelación oportuna libera lugar y cuota; una cancelación tardía queda pendiente hasta que un administrador la apruebe o rechace. Cada transición conserva un historial auditable y las excepciones administrativas requieren motivo.
+
 ## Niveles, currícula y progreso
 
 Los niveles son configurables por organización mediante `/admin/levels`. Cada nivel puede organizarse en capítulos y temas ordenados usando `/admin/levels/{id}/chapters`, `/admin/chapters/{id}/topics` y sus endpoints de actualización o desactivación. Los usuarios autenticados consultan la estructura activa completa en `GET /curriculum`.

@@ -1,4 +1,5 @@
 from app.models.auth_session import AuthSession
+from app.models.booking import Booking, BookingEvent, BookingPolicy, BookingPolicyTimeBlock
 from app.models.branch import Branch
 from app.models.invitation import Invitation
 from app.models.org import Organization
@@ -25,6 +26,10 @@ from app.models.user import User
 
 __all__ = [
     "AuthSession",
+    "Booking",
+    "BookingEvent",
+    "BookingPolicy",
+    "BookingPolicyTimeBlock",
     "Branch",
     "Invitation",
     "Organization",

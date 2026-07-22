@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 from app.core.config import settings
 from app.core.security import create_refresh_token, hash_token
 from app.models.branch import Branch
+from app.models.booking import BookingPolicy
 from app.models.enums import UserRole
 from app.models.invitation import Invitation
 from app.models.org import Organization
@@ -87,6 +88,18 @@ class PlatformService:
         )
         self.db.add_all([organization, branch, admin])
         self.db.flush()
+        self.db.add(
+            BookingPolicy(
+                organization_id=organization.id,
+                branch_id=None,
+                minimum_booking_notice_hours=24,
+                minimum_cancellation_notice_hours=24,
+                earliest_booking_week_offset=1,
+                latest_booking_week_offset=1,
+                created_by_user_id=admin.id,
+                updated_by_user_id=admin.id,
+            )
+        )
 
         raw_token = create_refresh_token()
         invitation = Invitation(
