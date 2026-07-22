@@ -20,6 +20,7 @@ class BookingPolicyIn(BaseModel):
     minimum_cancellation_notice_hours: int = Field(default=24, ge=0, le=8760)
     earliest_booking_week_offset: int = Field(default=1, ge=0, le=52)
     latest_booking_week_offset: int = Field(default=1, ge=0, le=52)
+    waitlist_offer_minutes: int = Field(default=120, ge=5, le=10080)
     time_blocks: list[BookingPolicyTimeBlockIn] = Field(default_factory=list)
 
     @model_validator(mode="after")
@@ -46,6 +47,7 @@ class BookingPolicyOut(BaseModel):
     minimum_cancellation_notice_hours: int
     earliest_booking_week_offset: int
     latest_booking_week_offset: int
+    waitlist_offer_minutes: int
     time_blocks: list[BookingPolicyTimeBlockOut]
     created_at: datetime
     updated_at: datetime
@@ -127,6 +129,7 @@ class BookingEventOut(BaseModel):
 
 class AvailableSessionOut(BookingSessionOut):
     confirmed_count: int
+    held_waitlist_places: int
     available_places: int
     own_booking_id: int | None
     can_book: bool

@@ -73,6 +73,7 @@ class BookingPolicy(TimestampMixin, Base):
             "latest_booking_week_offset >= earliest_booking_week_offset",
             name="booking_week_offsets_order",
         ),
+        CheckConstraint("waitlist_offer_minutes > 0", name="waitlist_offer_positive"),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -82,6 +83,7 @@ class BookingPolicy(TimestampMixin, Base):
     minimum_cancellation_notice_hours: Mapped[int] = mapped_column(Integer, default=24)
     earliest_booking_week_offset: Mapped[int] = mapped_column(Integer, default=1)
     latest_booking_week_offset: Mapped[int] = mapped_column(Integer, default=1)
+    waitlist_offer_minutes: Mapped[int] = mapped_column(Integer, default=120)
     created_by_user_id: Mapped[int] = mapped_column(Integer)
     updated_by_user_id: Mapped[int] = mapped_column(Integer)
 

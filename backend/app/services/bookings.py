@@ -21,6 +21,7 @@ from app.models.enums import (
 from app.models.schedule import ClassSession
 from app.models.student import StudentProfile
 from app.models.user import User
+from app.models.waitlist import BookingWaitlist
 
 
 class BookingError(Exception):
@@ -41,6 +42,7 @@ class EffectiveBookingPolicy:
     minimum_cancellation_notice_hours: int = 24
     earliest_booking_week_offset: int = 1
     latest_booking_week_offset: int = 1
+    waitlist_offer_minutes: int = 120
     time_blocks: tuple[BookingPolicyTimeBlock, ...] = ()
 
 
@@ -48,12 +50,16 @@ class EffectiveBookingPolicy:
 class SessionAvailability:
     session: ClassSession
     confirmed_count: int
+    held_count: int
     own_booking_id: int | None
     unavailable_reason: str | None
 
     @property
     def available_places(self) -> int:
-        return max(self.session.effective_capacity - self.confirmed_count, 0)
+        return max(
+            self.session.effective_capacity - self.confirmed_count - self.held_count,
+            0,
+        )
 
 
 @dataclass(frozen=True)
@@ -116,8 +122,12 @@ class BookingPolicyService:
             "minimum_cancellation_notice_hours",
             "earliest_booking_week_offset",
             "latest_booking_week_offset",
+            "waitlist_offer_minutes",
         ):
-            setattr(policy, field, int(data[field]))
+            value = data.get(field)
+            if value is None and field == "waitlist_offer_minutes":
+                value = 120
+            setattr(policy, field, int(value))
         policy.updated_by_user_id = actor.id
         policy.time_blocks.clear()
         policy.time_blocks.extend(
@@ -169,6 +179,7 @@ class BookingPolicyService:
             minimum_cancellation_notice_hours=policy.minimum_cancellation_notice_hours,
             earliest_booking_week_offset=policy.earliest_booking_week_offset,
             latest_booking_week_offset=policy.latest_booking_week_offset,
+            waitlist_offer_minutes=policy.waitlist_offer_minutes,
             time_blocks=tuple(policy.time_blocks),
         )
 
@@ -340,6 +351,7 @@ class BookingService:
                 quota_released=True,
                 now=current,
             )
+            self._offer_waitlist_place(booking.session_id, current)
         else:
             self._transition(
                 booking,
@@ -376,6 +388,7 @@ class BookingService:
                 quota_released=release_quota,
                 now=self._now(now),
             )
+            self._offer_waitlist_place(booking.session_id, self._now(now))
         else:
             self._transition(
                 booking,
@@ -410,6 +423,7 @@ class BookingService:
             quota_released=release_quota,
             now=self._now(now),
         )
+        self._offer_waitlist_place(booking.session_id, self._now(now))
         self.db.commit()
         return self._get(actor, booking.id)
 
@@ -434,6 +448,8 @@ class BookingService:
         override_rules: bool,
         reason: str | None,
         now: datetime,
+        held_waitlist_entry_id: int | None = None,
+        commit: bool = True,
     ) -> Booking:
         session = self.db.scalar(
             self._session_query()
@@ -445,12 +461,16 @@ class BookingService:
         )
         if session is None:
             raise BookingNotFoundError("Sesión no encontrada")
+        if held_waitlist_entry_id is None:
+            self._offer_waitlist_place(session.id, now)
         availability = self._availability(
             student,
             session,
             now=now,
             raise_error=not override_rules,
             ignore_policy_rules=override_rules,
+            exclude_waitlist_entry_id=held_waitlist_entry_id,
+            ignore_booking_timing_rules=held_waitlist_entry_id is not None,
         )
         if availability.own_booking_id is not None:
             raise BookingConflictError("El alumno ya reservó esta sesión")
@@ -481,11 +501,15 @@ class BookingService:
             reason=reason,
             override_rules=override_rules,
         )
+        if not commit:
+            return booking
         try:
             self.db.commit()
         except IntegrityError as error:
             self.db.rollback()
-            raise BookingConflictError("El cupo o las reservaciones cambiaron; intenta de nuevo") from error
+            raise BookingConflictError(
+                "El cupo o las reservaciones cambiaron; intenta de nuevo"
+            ) from error
         return self._get(actor, booking.id)
 
     def _availability(
@@ -496,29 +520,43 @@ class BookingService:
         now: datetime,
         raise_error: bool,
         ignore_policy_rules: bool = False,
+        exclude_waitlist_entry_id: int | None = None,
+        ignore_booking_timing_rules: bool = False,
     ) -> SessionAvailability:
         bookings = self._bookings_for_session(session.organization_id, session.id)
         active = [item for item in bookings if item.status in self.ACTIVE_STATUSES]
+        offers = self._active_waitlist_offers(
+            session.organization_id,
+            session.id,
+            now,
+            exclude_id=exclude_waitlist_entry_id,
+        )
         own = next((item for item in active if item.student_id == student.id), None)
         reason = self._unavailable_reason(
             student,
             session,
             active,
+            offers,
             now=now,
             ignore_policy_rules=ignore_policy_rules,
+            ignore_booking_timing_rules=ignore_booking_timing_rules,
         )
         if raise_error and reason is not None:
             raise BookingConflictError(reason)
-        return SessionAvailability(session, len(active), own.id if own else None, reason)
+        return SessionAvailability(
+            session, len(active), len(offers), own.id if own else None, reason
+        )
 
     def _unavailable_reason(
         self,
         student: StudentProfile,
         session: ClassSession,
         active_session_bookings: list[Booking],
+        active_offers: list[BookingWaitlist],
         *,
         now: datetime,
         ignore_policy_rules: bool,
+        ignore_booking_timing_rules: bool,
     ) -> str | None:
         if student.status != StudentStatus.ACTIVE.value:
             return "El alumno no está activo"
@@ -526,12 +564,17 @@ class BookingService:
             return "La sesión no está publicada"
         if any(item.student_id == student.id for item in active_session_bookings):
             return "El alumno ya reservó esta sesión"
-        if len(active_session_bookings) >= session.effective_capacity:
-            return "La sesión no tiene lugares disponibles"
+        if any(item.student_id == student.id for item in active_offers):
+            return "El alumno ya tiene una oferta activa para esta sesión"
         if self._has_time_conflict(student, session):
             return "El alumno ya tiene otra clase en ese horario"
         if ignore_policy_rules:
-            return None
+            return (
+                "La sesión no tiene lugares disponibles"
+                if len(active_session_bookings) + len(active_offers)
+                >= session.effective_capacity
+                else None
+            )
         if student.course_start_date and session.session_date < student.course_start_date:
             return "La sesión es anterior al inicio del curso"
         if student.course_end_date and session.session_date > student.course_end_date:
@@ -543,27 +586,33 @@ class BookingService:
         policy = BookingPolicyService(self.db).effective(
             student.organization_id, session.branch_id
         )
-        session_start = self._session_start(session)
-        if session_start - now < timedelta(hours=policy.minimum_booking_notice_hours):
-            return "No se cumple el aviso mínimo para reservar"
         local_now = self._local_now(now, session.branch.timezone)
         current_week = local_now.date() - timedelta(days=local_now.weekday())
         session_week = session.session_date - timedelta(days=session.session_date.weekday())
-        earliest = current_week + timedelta(weeks=policy.earliest_booking_week_offset)
-        latest = current_week + timedelta(weeks=policy.latest_booking_week_offset)
-        if session_week < earliest or session_week > latest:
-            return "La sesión está fuera de las semanas permitidas para reservar"
-        if policy.time_blocks and not any(
-            block.weekday == local_now.weekday()
-            and block.start_time <= local_now.time().replace(tzinfo=None)
-            and block.end_time > local_now.time().replace(tzinfo=None)
-            for block in policy.time_blocks
-        ):
-            return "La ventana de reservación está cerrada"
+        if not ignore_booking_timing_rules:
+            session_start = self._session_start(session)
+            if session_start - now < timedelta(hours=policy.minimum_booking_notice_hours):
+                return "No se cumple el aviso mínimo para reservar"
+            earliest = current_week + timedelta(weeks=policy.earliest_booking_week_offset)
+            latest = current_week + timedelta(weeks=policy.latest_booking_week_offset)
+            if session_week < earliest or session_week > latest:
+                return "La sesión está fuera de las semanas permitidas para reservar"
+            if policy.time_blocks and not any(
+                block.weekday == local_now.weekday()
+                and block.start_time <= local_now.time().replace(tzinfo=None)
+                and block.end_time > local_now.time().replace(tzinfo=None)
+                for block in policy.time_blocks
+            ):
+                return "La ventana de reservación está cerrada"
         duration = self._duration_minutes(session.start_time, session.end_time)
         usage = self._weekly_usage(student, session_week)
         if usage.reserved_minutes + duration > usage.allowed_minutes:
             return "La reservación excede el límite semanal de horas"
+        if (
+            len(active_session_bookings) + len(active_offers)
+            >= session.effective_capacity
+        ):
+            return "La sesión no tiene lugares disponibles"
         return None
 
     def _weekly_usage(self, student: StudentProfile, week_start: date) -> WeeklyUsage:
@@ -649,6 +698,33 @@ class BookingService:
                     Booking.session_id == session_id,
                 )
             )
+        )
+
+    def _active_waitlist_offers(
+        self,
+        organization_id: int,
+        session_id: int,
+        now: datetime,
+        *,
+        exclude_id: int | None = None,
+    ) -> list[BookingWaitlist]:
+        statement = select(BookingWaitlist).where(
+            BookingWaitlist.organization_id == organization_id,
+            BookingWaitlist.session_id == session_id,
+            BookingWaitlist.status == "OFFERED",
+            BookingWaitlist.offer_expires_at > now,
+        )
+        if exclude_id is not None:
+            statement = statement.where(BookingWaitlist.id != exclude_id)
+        return list(self.db.scalars(statement))
+
+    def _offer_waitlist_place(self, session_id: int, now: datetime) -> None:
+        from app.services.waitlists import WaitlistService
+
+        WaitlistService(self.db).offer_next_for_session(
+            session_id=session_id,
+            now=now,
+            commit=False,
         )
 
     def _transition(

@@ -83,6 +83,7 @@ def bootstrap_initial_data(db: Session) -> None:
                 minimum_cancellation_notice_hours=24,
                 earliest_booking_week_offset=1,
                 latest_booking_week_offset=1,
+                waitlist_offer_minutes=120,
                 created_by_user_id=admin.id,
                 updated_by_user_id=admin.id,
             )

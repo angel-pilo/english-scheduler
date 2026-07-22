@@ -23,6 +23,7 @@ from app.models.teacher import (
     TeacherProfile,
 )
 from app.models.user import User
+from app.models.waitlist import BookingWaitlist, Notification
 
 __all__ = [
     "AuthSession",
@@ -54,4 +55,6 @@ __all__ = [
     "TeacherProfile",
     "User",
     "UserPermission",
+    "BookingWaitlist",
+    "Notification",
 ]

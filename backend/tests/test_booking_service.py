@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from datetime import date, datetime, time, timezone
+from datetime import date, datetime, time, timedelta, timezone
 from decimal import Decimal
 
 import pytest
@@ -9,7 +9,13 @@ from sqlalchemy.orm import Session
 from app.db.base import Base
 from app.models.branch import Branch
 from app.models.curriculum import StudentLevelHistory
-from app.models.enums import BookingStatus, ClassSessionStatus, StudentStatus, UserRole
+from app.models.enums import (
+    BookingStatus,
+    ClassSessionStatus,
+    StudentStatus,
+    UserRole,
+    WaitlistStatus,
+)
 from app.models.level import AcademicLevel
 from app.models.org import Organization
 from app.models.rbac import Role
@@ -24,6 +30,12 @@ from app.services.bookings import (
     BookingNotFoundError,
     BookingPolicyService,
     BookingService,
+)
+from app.services.waitlists import (
+    NotificationService,
+    WaitlistConflictError,
+    WaitlistNotFoundError,
+    WaitlistService,
 )
 
 
@@ -374,3 +386,134 @@ def test_tenant_cannot_access_another_organizations_session(session: Session) ->
 
     with pytest.raises(BookingNotFoundError, match="Sesión no encontrada"):
         BookingService(session).create_for_self(user, foreign_session.id, now=NOW)
+
+
+def test_waitlist_requires_a_full_session_and_preserves_fifo(session: Session) -> None:
+    tenant = _tenant(session)
+    first_user, _ = _student(session, tenant, 1)
+    second_user, _ = _student(session, tenant, 2)
+    third_user, _ = _student(session, tenant, 3)
+    class_session = _class_session(session, tenant, capacity=1)
+    booking_service = BookingService(session)
+    waitlist_service = WaitlistService(session)
+
+    with pytest.raises(WaitlistConflictError, match="reservar directamente"):
+        waitlist_service.join(second_user, class_session.id, now=NOW)
+
+    booking_service.create_for_self(first_user, class_session.id, now=NOW)
+    second = waitlist_service.join(second_user, class_session.id, now=NOW)
+    third = waitlist_service.join(third_user, class_session.id, now=NOW)
+
+    assert waitlist_service.position(second) == 1
+    assert waitlist_service.position(third) == 2
+
+
+def test_cancellation_offers_place_and_holds_capacity(session: Session) -> None:
+    tenant = _tenant(session)
+    booked_user, _ = _student(session, tenant, 1)
+    waiting_user, _ = _student(session, tenant, 2)
+    other_user, _ = _student(session, tenant, 3)
+    class_session = _class_session(session, tenant, capacity=1)
+    booking_service = BookingService(session)
+    waitlist_service = WaitlistService(session)
+    booking = booking_service.create_for_self(booked_user, class_session.id, now=NOW)
+    entry = waitlist_service.join(waiting_user, class_session.id, now=NOW)
+
+    booking_service.cancel_for_self(booked_user, booking.id, reason=None, now=NOW)
+    offered = waitlist_service.get_for_self(waiting_user, entry.id, now=NOW)
+
+    assert offered.status == WaitlistStatus.OFFERED.value
+    assert offered.offer_expires_at is not None
+    notifications = NotificationService(session).list(waiting_user)
+    assert notifications[0].notification_type == "WAITLIST_PLACE_AVAILABLE"
+    with pytest.raises(BookingConflictError, match="lugares"):
+        booking_service.create_for_self(other_user, class_session.id, now=NOW)
+
+
+def test_student_explicitly_accepts_waitlist_offer(session: Session) -> None:
+    tenant = _tenant(session)
+    booked_user, _ = _student(session, tenant, 1)
+    waiting_user, _ = _student(session, tenant, 2)
+    class_session = _class_session(session, tenant, capacity=1)
+    booking_service = BookingService(session)
+    waitlist_service = WaitlistService(session)
+    original = booking_service.create_for_self(booked_user, class_session.id, now=NOW)
+    entry = waitlist_service.join(waiting_user, class_session.id, now=NOW)
+    booking_service.cancel_for_self(booked_user, original.id, reason=None, now=NOW)
+
+    accepted, booking = waitlist_service.accept(waiting_user, entry.id, now=NOW)
+
+    assert accepted.status == WaitlistStatus.ACCEPTED.value
+    assert accepted.booking_id == booking.id
+    assert booking.status == BookingStatus.CONFIRMED.value
+    assert booking.student_id == accepted.student_id
+
+
+def test_expired_offer_notifies_and_advances_queue(session: Session) -> None:
+    tenant = _tenant(session)
+    booked_user, _ = _student(session, tenant, 1)
+    first_waiting_user, _ = _student(session, tenant, 2)
+    second_waiting_user, _ = _student(session, tenant, 3)
+    class_session = _class_session(session, tenant, capacity=1)
+    booking_service = BookingService(session)
+    waitlist_service = WaitlistService(session)
+    booking = booking_service.create_for_self(booked_user, class_session.id, now=NOW)
+    first = waitlist_service.join(first_waiting_user, class_session.id, now=NOW)
+    second = waitlist_service.join(second_waiting_user, class_session.id, now=NOW)
+    booking_service.cancel_for_self(booked_user, booking.id, reason=None, now=NOW)
+
+    after_expiration = NOW + timedelta(minutes=121)
+    processed = waitlist_service.process_expired(tenant.admin, now=after_expiration)
+    first = waitlist_service.get_for_self(
+        first_waiting_user, first.id, now=after_expiration
+    )
+    second = waitlist_service.get_for_self(
+        second_waiting_user, second.id, now=after_expiration
+    )
+
+    assert processed == 1
+    assert first.status == WaitlistStatus.EXPIRED.value
+    assert second.status == WaitlistStatus.OFFERED.value
+    assert {
+        item.notification_type
+        for item in NotificationService(session).list(first_waiting_user)
+    } == {"WAITLIST_PLACE_AVAILABLE", "WAITLIST_OFFER_EXPIRED"}
+
+
+def test_leaving_an_offer_promotes_next_student(session: Session) -> None:
+    tenant = _tenant(session)
+    booked_user, _ = _student(session, tenant, 1)
+    first_waiting_user, _ = _student(session, tenant, 2)
+    second_waiting_user, _ = _student(session, tenant, 3)
+    class_session = _class_session(session, tenant, capacity=1)
+    booking_service = BookingService(session)
+    waitlist_service = WaitlistService(session)
+    booking = booking_service.create_for_self(booked_user, class_session.id, now=NOW)
+    first = waitlist_service.join(first_waiting_user, class_session.id, now=NOW)
+    second = waitlist_service.join(second_waiting_user, class_session.id, now=NOW)
+    booking_service.cancel_for_self(booked_user, booking.id, reason=None, now=NOW)
+
+    left = waitlist_service.leave(first_waiting_user, first.id, now=NOW)
+    promoted = waitlist_service.get_for_self(second_waiting_user, second.id, now=NOW)
+
+    assert left.status == WaitlistStatus.LEFT.value
+    assert promoted.status == WaitlistStatus.OFFERED.value
+
+
+def test_notification_can_only_be_read_by_its_owner(session: Session) -> None:
+    tenant = _tenant(session)
+    booked_user, _ = _student(session, tenant, 1)
+    waiting_user, _ = _student(session, tenant, 2)
+    other_user, _ = _student(session, tenant, 3)
+    class_session = _class_session(session, tenant, capacity=1)
+    booking_service = BookingService(session)
+    waitlist_service = WaitlistService(session)
+    booking = booking_service.create_for_self(booked_user, class_session.id, now=NOW)
+    waitlist_service.join(waiting_user, class_session.id, now=NOW)
+    booking_service.cancel_for_self(booked_user, booking.id, reason=None, now=NOW)
+    notification = NotificationService(session).list(waiting_user)[0]
+
+    with pytest.raises(WaitlistNotFoundError, match="Notificación no encontrada"):
+        NotificationService(session).mark_read(other_user, notification.id, now=NOW)
+    read = NotificationService(session).mark_read(waiting_user, notification.id, now=NOW)
+    assert read.read_at is not None

@@ -104,6 +104,12 @@ Las políticas de reservación se configuran globalmente o por sucursal mediante
 
 Los alumnos consultan lugares y motivos de indisponibilidad en `/students/me/available-sessions`, reservan desde `/students/me/bookings` y revisan su consumo semanal. El backend valida nivel actual, sucursal permitida, vigencia, cupo, cruces de horario y límite de horas. Una cancelación oportuna libera lugar y cuota; una cancelación tardía queda pendiente hasta que un administrador la apruebe o rechace. Cada transición conserva un historial auditable y las excepciones administrativas requieren motivo.
 
+## Lista de espera
+
+Cuando una sesión está llena, el alumno puede unirse a `/students/me/waitlist`. La cola conserva orden FIFO y, al liberarse un lugar, crea una oferta temporal para el siguiente alumno sin confirmar automáticamente la reservación. La duración se configura con `waitlist_offer_minutes` dentro de la política de reservación.
+
+Mientras una oferta está vigente, el lugar queda apartado. El alumno debe aceptarla explícitamente; si vence o abandona la cola, el siguiente recibe la oportunidad. Los avisos quedan disponibles en `/notifications`, y el administrador puede consultar la cola o procesar vencimientos desde `/admin/waitlist`.
+
 ## Niveles, currícula y progreso
 
 Los niveles son configurables por organización mediante `/admin/levels`. Cada nivel puede organizarse en capítulos y temas ordenados usando `/admin/levels/{id}/chapters`, `/admin/chapters/{id}/topics` y sus endpoints de actualización o desactivación. Los usuarios autenticados consultan la estructura activa completa en `GET /curriculum`.

@@ -83,6 +83,7 @@ def get_available_sessions(
                 AvailableSessionOut(
                     **session_data,
                     confirmed_count=item.confirmed_count,
+                    held_waitlist_places=item.held_count,
                     available_places=item.available_places,
                     own_booking_id=item.own_booking_id,
                     can_book=item.unavailable_reason is None,
