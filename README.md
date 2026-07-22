@@ -69,7 +69,7 @@ La API expone los siguientes flujos:
 - `POST /auth/refresh`: rota el refresh token.
 - `POST /auth/logout`: revoca la sesión actual.
 - `GET /auth/me`: devuelve el usuario autenticado.
-- `POST /admin/invitations`: invita a un profesor sin asignarle contraseña.
+- `POST /admin/students` y `POST /admin/teachers`: crean el perfil y generan una invitación sin asignar contraseña.
 - `POST /auth/activate`: activa una invitación de un solo uso.
 - `POST /auth/forgot-password`: solicita recuperación sin revelar si la cuenta existe.
 - `POST /auth/reset-password`: cambia la contraseña y revoca las sesiones anteriores.
@@ -85,6 +85,14 @@ docker compose exec backend python -m app.cli.create_super_admin --email owner@e
 ```
 
 Los roles poseen permisos predeterminados. Un administrador puede consultar el catálogo y delegar permisos específicos —con expiración opcional— mediante `/admin/users/{user_id}/permissions`. Las operaciones siempre verifican la organización en backend.
+
+## Profesores
+
+Los administradores crean y gestionan perfiles docentes mediante `/admin/teachers`, incluyendo número de empleado, sucursales asignadas y niveles autorizados. El alta genera la misma invitación segura y de un solo uso empleada para alumnos.
+
+La disponibilidad recurrente y sus excepciones se administran con `/admin/teachers/{id}/availability`. Cada profesor también puede mantener su perfil y disponibilidad desde `/teachers/me` y `/teachers/me/availability`. Las excepciones por fecha tienen prioridad para la futura generación de horarios.
+
+El catálogo base de niveles está disponible en `/admin/levels`; la currícula, capítulos, temas y progreso se incorporarán en la Fase 8.
 
 ## Alumnos
 

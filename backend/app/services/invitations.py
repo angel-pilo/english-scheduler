@@ -13,7 +13,7 @@ from app.core.security import (
     validate_password_strength,
 )
 from app.models.branch import Branch
-from app.models.enums import StudentStatus, UserRole
+from app.models.enums import StudentStatus, TeacherStatus, UserRole
 from app.models.invitation import Invitation
 from app.models.user import User
 
@@ -131,6 +131,10 @@ class InvitationService:
             or (
                 invitation.user.student_profile is not None
                 and invitation.user.student_profile.status != StudentStatus.ACTIVE.value
+            )
+            or (
+                invitation.user.teacher_profile is not None
+                and invitation.user.teacher_profile.status != TeacherStatus.ACTIVE.value
             )
         ):
             raise InvalidInvitationError("Invitación inválida o expirada")

@@ -14,6 +14,7 @@ if TYPE_CHECKING:
     from app.models.branch import Branch
     from app.models.org import Organization
     from app.models.student import StudentProfile
+    from app.models.teacher import TeacherProfile
 
 
 class User(TimestampMixin, Base):
@@ -63,4 +64,10 @@ class User(TimestampMixin, Base):
         uselist=False,
         cascade="all, delete-orphan",
         overlaps="primary_branch,student_profiles",
+    )
+    teacher_profile: Mapped["TeacherProfile | None"] = relationship(
+        back_populates="user",
+        uselist=False,
+        cascade="all, delete-orphan",
+        overlaps="branch,branch_assignments,level,teacher_assignments",
     )
