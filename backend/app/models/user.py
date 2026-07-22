@@ -32,7 +32,9 @@ class User(TimestampMixin, Base):
     branch_id: Mapped[int | None] = mapped_column(
         ForeignKey("branches.id", ondelete="RESTRICT"), index=True, nullable=True
     )
-    role: Mapped[str] = mapped_column(String(20), index=True)
+    role: Mapped[str] = mapped_column(
+        ForeignKey("roles.code", ondelete="RESTRICT"), index=True
+    )
     name: Mapped[str] = mapped_column(String(120))
     email: Mapped[str] = mapped_column(String(180), unique=True, index=True)
     hashed_password: Mapped[str | None] = mapped_column(String(255), nullable=True)

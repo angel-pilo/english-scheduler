@@ -10,6 +10,8 @@ from app.core.security import decode_access_token
 from app.db.session import get_db
 from app.models.auth_session import AuthSession
 from app.models.user import User
+from app.models.enums import PermissionCode
+from app.services.authorization import AuthorizationService
 
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
@@ -58,6 +60,17 @@ def get_current_user(context: AuthContext = Depends(get_auth_context)) -> User:
 def require_role(*roles: str):
     def _inner(user: User = Depends(get_current_user)) -> User:
         if user.role not in roles:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="No autorizado")
+        return user
+
+    return _inner
+
+
+def require_permission(permission_code: str | PermissionCode):
+    def _inner(
+        user: User = Depends(get_current_user), db: Session = Depends(get_db)
+    ) -> User:
+        if not AuthorizationService(db).has_permission(user, permission_code):
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="No autorizado")
         return user
 

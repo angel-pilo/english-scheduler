@@ -1,9 +1,9 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
-from app.api.deps import require_role
+from app.api.deps import require_permission
 from app.db.session import get_db
-from app.models.enums import UserRole
+from app.models.enums import PermissionCode
 from app.models.user import User
 from app.schemas.admin import InvitationCreateIn, InvitationOut
 from app.services.invitations import (
@@ -22,7 +22,7 @@ router = APIRouter(prefix="/admin", tags=["admin"])
 def create_invitation(
     payload: InvitationCreateIn,
     db: Session = Depends(get_db),
-    admin: User = Depends(require_role(UserRole.ADMIN.value)),
+    admin: User = Depends(require_permission(PermissionCode.USERS_INVITE)),
 ) -> InvitationOut:
     try:
         created = InvitationService(db).create(
