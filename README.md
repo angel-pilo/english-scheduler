@@ -60,3 +60,18 @@ docker compose exec backend alembic revision --autogenerate -m "describir cambio
 ```
 
 No uses `Base.metadata.create_all()` para evolucionar el esquema. Todos los cambios deben quedar representados mediante Alembic.
+
+## Autenticación
+
+La API expone los siguientes flujos:
+
+- `POST /auth/login`: crea una sesión y entrega access/refresh tokens.
+- `POST /auth/refresh`: rota el refresh token.
+- `POST /auth/logout`: revoca la sesión actual.
+- `GET /auth/me`: devuelve el usuario autenticado.
+- `POST /admin/invitations`: invita a un profesor o alumno sin asignarle contraseña.
+- `POST /auth/activate`: activa una invitación de un solo uso.
+- `POST /auth/forgot-password`: solicita recuperación sin revelar si la cuenta existe.
+- `POST /auth/reset-password`: cambia la contraseña y revoca las sesiones anteriores.
+
+En `ENVIRONMENT=development`, las respuestas de invitación y recuperación incluyen el enlace necesario para probar localmente. En producción esos enlaces no se devuelven y deberán enviarse mediante el servicio de correo que se conectará en la fase de notificaciones.

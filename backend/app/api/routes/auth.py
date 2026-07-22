@@ -4,7 +4,17 @@ from sqlalchemy.orm import Session
 from app.api.deps import AuthContext, get_auth_context, get_current_user
 from app.db.session import get_db
 from app.models.user import User
-from app.schemas.auth import ActivateAccountIn, LoginIn, MeOut, MessageOut, RefreshIn, TokenOut
+from app.schemas.auth import (
+    ActivateAccountIn,
+    LoginIn,
+    MeOut,
+    MessageOut,
+    PasswordResetIn,
+    PasswordResetRequestIn,
+    PasswordResetRequestOut,
+    RefreshIn,
+    TokenOut,
+)
 from app.services.auth import (
     AccountLockedError,
     AuthService,
@@ -12,6 +22,11 @@ from app.services.auth import (
     InvalidRefreshTokenError,
 )
 from app.services.invitations import InvitationError, InvitationService, InvalidInvitationError
+from app.services.password_resets import (
+    InvalidPasswordResetTokenError,
+    PasswordResetError,
+    PasswordResetService,
+)
 
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -61,6 +76,32 @@ def activate(data: ActivateAccountIn, db: Session = Depends(get_db)) -> MessageO
     except InvitationError as error:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(error))
     return MessageOut(message="Cuenta activada correctamente")
+
+
+@router.post("/forgot-password", response_model=PasswordResetRequestOut)
+def forgot_password(
+    data: PasswordResetRequestIn, db: Session = Depends(get_db)
+) -> PasswordResetRequestOut:
+    reset_url = PasswordResetService(db).request(data.email)
+    return PasswordResetRequestOut(
+        message="Si el correo está registrado, recibirás instrucciones para restablecer tu contraseña",
+        reset_url=reset_url,
+    )
+
+
+@router.post("/reset-password", response_model=MessageOut)
+def reset_password(data: PasswordResetIn, db: Session = Depends(get_db)) -> MessageOut:
+    try:
+        PasswordResetService(db).reset(
+            token=data.token,
+            password=data.password,
+            password_confirmation=data.password_confirmation,
+        )
+    except InvalidPasswordResetTokenError as error:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(error))
+    except PasswordResetError as error:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(error))
+    return MessageOut(message="Contraseña restablecida correctamente")
 
 
 @router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)

@@ -10,6 +10,7 @@ from app.db.base import Base, TimestampMixin
 if TYPE_CHECKING:
     from app.models.auth_session import AuthSession
     from app.models.invitation import Invitation
+    from app.models.password_reset_token import PasswordResetToken
     from app.models.branch import Branch
     from app.models.org import Organization
 
@@ -49,4 +50,7 @@ class User(TimestampMixin, Base):
         back_populates="user",
         foreign_keys="Invitation.user_id",
         cascade="all, delete-orphan",
+    )
+    password_reset_tokens: Mapped[list["PasswordResetToken"]] = relationship(
+        back_populates="user", cascade="all, delete-orphan"
     )

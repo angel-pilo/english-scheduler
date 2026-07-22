@@ -27,6 +27,20 @@ class MessageOut(BaseModel):
     message: str
 
 
+class PasswordResetRequestIn(BaseModel):
+    email: EmailStr
+
+
+class PasswordResetRequestOut(MessageOut):
+    reset_url: str | None = None
+
+
+class PasswordResetIn(BaseModel):
+    token: str = Field(min_length=32, max_length=512)
+    password: str = Field(min_length=12, max_length=128)
+    password_confirmation: str = Field(min_length=12, max_length=128)
+
+
 class MeOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

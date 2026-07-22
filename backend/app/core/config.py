@@ -11,6 +11,7 @@ class Settings(BaseSettings):
     max_login_attempts: int = 5
     login_lock_minutes: int = 15
     invitation_expire_hours: int = 72
+    password_reset_expire_minutes: int = 60
     frontend_url: str = "http://localhost:5173"
     environment: str = "development"
 
