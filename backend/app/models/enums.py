@@ -64,3 +64,9 @@ class ScheduleExceptionScope(str, Enum):
     BRANCH = "BRANCH"
     ROOM = "ROOM"
     TEACHER = "TEACHER"
+
+
+class ClassSessionStatus(str, Enum):
+    DRAFT = "DRAFT"
+    PUBLISHED = "PUBLISHED"
+    CANCELLED = "CANCELLED"

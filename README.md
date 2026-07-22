@@ -90,7 +90,13 @@ Los roles poseen permisos predeterminados. Un administrador puede consultar el c
 
 Los administradores configuran plantillas semanales mediante `/admin/schedule-templates`, indicando nivel, sucursal, salón, horario, vigencia y cupo. El cupo efectivo se calcula como el menor entre el cupo configurado, el predeterminado del nivel y la capacidad física del salón.
 
-Los cierres y bloqueos de calendario se registran en `/admin/schedule-exceptions`. Pueden afectar a toda la organización, una sucursal, un salón o un profesor durante el día completo o un rango horario. Estas excepciones tienen prioridad sobre las plantillas cuando se generen las sesiones reales en la Fase 10.
+Los cierres y bloqueos de calendario se registran en `/admin/schedule-exceptions`. Pueden afectar a toda la organización, una sucursal, un salón o un profesor durante el día completo o un rango horario. Estas excepciones tienen prioridad sobre las plantillas al generar sesiones.
+
+## Sesiones semanales
+
+`POST /admin/class-sessions/generate-week` materializa una semana de plantillas como sesiones individuales. La operación es idempotente, respeta vigencias y excepciones, impide cruces de salón y asigna profesores elegibles con un criterio determinista de disponibilidad y carga reciente. Si ningún profesor cumple las reglas, conserva la sesión como borrador sin asignar para que el administrador pueda resolverla.
+
+Los administradores consultan y ajustan sesiones mediante `/admin/class-sessions`. Una sesión no puede publicarse sin profesor y su cupo efectivo nunca supera la capacidad física del salón. Cada profesor consulta únicamente sus sesiones publicadas en `GET /teachers/me/sessions`.
 
 ## Niveles, currícula y progreso
 

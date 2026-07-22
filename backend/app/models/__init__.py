@@ -5,7 +5,7 @@ from app.models.org import Organization
 from app.models.password_reset_token import PasswordResetToken
 from app.models.rbac import Permission, Role, RolePermission, UserPermission
 from app.models.room import Room
-from app.models.schedule import ScheduleException, ScheduleTemplate
+from app.models.schedule import ClassSession, ScheduleException, ScheduleTemplate
 from app.models.student import StudentProfile
 from app.models.curriculum import (
     CurriculumChapter,
@@ -35,6 +35,7 @@ __all__ = [
     "Room",
     "ScheduleException",
     "ScheduleTemplate",
+    "ClassSession",
     "StudentProfile",
     "CurriculumChapter",
     "CurriculumTopic",
