@@ -99,3 +99,9 @@ class WaitlistStatus(str, Enum):
 class NotificationType(str, Enum):
     WAITLIST_PLACE_AVAILABLE = "WAITLIST_PLACE_AVAILABLE"
     WAITLIST_OFFER_EXPIRED = "WAITLIST_OFFER_EXPIRED"
+
+
+class TeacherAssignmentMethod(str, Enum):
+    AUTO_GENERATION = "AUTO_GENERATION"
+    AUTO_RECOMMENDATION = "AUTO_RECOMMENDATION"
+    MANUAL = "MANUAL"

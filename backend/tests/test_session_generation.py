@@ -236,7 +236,11 @@ def test_unassigned_session_requires_teacher_before_publish(session: Session) ->
     published = service.update(
         admin,
         item.id,
-        {"teacher_id": teacher.id, "status": ClassSessionStatus.PUBLISHED},
+        {
+            "teacher_id": teacher.id,
+            "status": ClassSessionStatus.PUBLISHED,
+            "assignment_reason": "Asignación manual inicial",
+        },
     )
     assert published.teacher_id == teacher.id
     assert published.status == ClassSessionStatus.PUBLISHED.value
@@ -336,3 +340,80 @@ def test_week_must_start_on_monday(session: Session) -> None:
 def test_update_rejects_null_required_fields(field: str) -> None:
     with pytest.raises(ValidationError):
         ClassSessionUpdateIn.model_validate({field: None})
+
+
+def test_manual_teacher_change_requires_reason(session: Session) -> None:
+    admin, branch, room, _, level = _tenant(session)
+    teacher = _teacher(session, admin, branch, level, 1)
+    ScheduleService(session).create_template(
+        admin, _template_data(branch, room, level)
+    )
+    item = ClassSessionService(session).generate_week(
+        admin, week_start=date(2026, 8, 3)
+    ).sessions[0]
+    second = _teacher(session, admin, branch, level, 2)
+
+    with pytest.raises(SessionGenerationError, match="motivo"):
+        ClassSessionService(session).update(
+            admin, item.id, {"teacher_id": second.id}
+        )
+
+    changed = ClassSessionService(session).update(
+        admin,
+        item.id,
+        {"teacher_id": second.id, "assignment_reason": "Rotación solicitada"},
+    )
+    history = ClassSessionService(session).assignment_history(admin, item.id)
+    assert changed.teacher_id == second.id
+    assert [event.method for event in history] == ["AUTO_GENERATION", "MANUAL"]
+    assert history[-1].reason == "Rotación solicitada"
+
+
+def test_scoring_penalizes_repeated_group_and_explains_ranking(session: Session) -> None:
+    admin, branch, room, _, level = _tenant(session)
+    first = _teacher(session, admin, branch, level, 1)
+    template = ScheduleService(session).create_template(
+        admin, _template_data(branch, room, level)
+    )
+    service = ClassSessionService(session)
+    for week_start in (
+        date(2026, 7, 6),
+        date(2026, 7, 13),
+        date(2026, 7, 20),
+        date(2026, 7, 27),
+    ):
+        historical = service.generate_week(admin, week_start=week_start)
+        assert historical.sessions[0].teacher_id == first.id
+    second = _teacher(session, admin, branch, level, 2)
+
+    generated = service.generate_week(admin, week_start=date(2026, 8, 3))
+    item = generated.sessions[0]
+    candidates = service.teacher_candidates(admin, item.id)
+
+    assert item.source_template_id == template.id
+    assert item.teacher_id == second.id
+    assert candidates[0].teacher.id == second.id
+    assert candidates[0].score == 1000
+    first_score = next(candidate for candidate in candidates if candidate.teacher.id == first.id)
+    assert first_score.breakdown.recent_same_template_sessions == 4
+    assert first_score.breakdown.recent_same_template_penalty == 140
+    assert first_score.score < candidates[0].score
+
+
+def test_assign_best_teacher_records_recommendation(session: Session) -> None:
+    admin, branch, room, _, level = _tenant(session)
+    ScheduleService(session).create_template(
+        admin, _template_data(branch, room, level)
+    )
+    service = ClassSessionService(session)
+    item = service.generate_week(admin, week_start=date(2026, 8, 3)).sessions[0]
+    assert item.teacher_id is None
+    teacher = _teacher(session, admin, branch, level, 1)
+
+    assigned = service.assign_best_teacher(admin, item.id)
+    history = service.assignment_history(admin, item.id)
+
+    assert assigned.teacher_id == teacher.id
+    assert history[-1].method == "AUTO_RECOMMENDATION"
+    assert history[-1].score == 1000
+    assert "total_penalty" in history[-1].score_breakdown

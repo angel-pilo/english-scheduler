@@ -1,6 +1,6 @@
 from datetime import date, datetime, time
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from app.models.enums import ClassSessionStatus
 
@@ -17,6 +17,13 @@ class ClassSessionUpdateIn(BaseModel):
     title: str = Field(default=None, min_length=1, max_length=200)
     notes: str | None = Field(default=None, max_length=4000)
     status: ClassSessionStatus = None
+    assignment_reason: str | None = Field(default=None, min_length=1, max_length=1000)
+
+    @model_validator(mode="after")
+    def require_assignment_reason(self):
+        if "teacher_id" in self.model_fields_set and not self.assignment_reason:
+            raise ValueError("El motivo de reasignación es obligatorio")
+        return self
 
 
 class ClassSessionOut(BaseModel):
@@ -61,3 +68,43 @@ class GenerateWeekOut(BaseModel):
     blocked_count: int
     sessions: list[ClassSessionOut]
     issues: list[GenerationIssueOut]
+
+
+class TeacherScoreBreakdownOut(BaseModel):
+    weekly_load_minutes: int
+    weekly_load_penalty: int
+    recent_total_sessions: int
+    recent_total_penalty: int
+    recent_same_level_sessions: int
+    recent_same_level_penalty: int
+    recent_same_template_sessions: int
+    recent_same_template_penalty: int
+    recent_same_slot_sessions: int
+    recent_same_slot_penalty: int
+    total_penalty: int
+
+
+class TeacherCandidateOut(BaseModel):
+    teacher_id: int
+    teacher_name: str
+    eligible: bool
+    ineligibility_reason: str | None
+    score: int | None
+    breakdown: TeacherScoreBreakdownOut | None
+
+
+class AssignBestTeacherIn(BaseModel):
+    reason: str | None = Field(default=None, max_length=1000)
+
+
+class TeacherAssignmentEventOut(BaseModel):
+    id: int
+    session_id: int
+    previous_teacher_id: int | None
+    new_teacher_id: int | None
+    method: str
+    score: int | None
+    score_breakdown: dict[str, int] | None
+    reason: str | None
+    actor_user_id: int
+    created_at: datetime

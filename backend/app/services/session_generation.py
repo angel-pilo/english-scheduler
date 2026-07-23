@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
 from datetime import date, timedelta, time
 from uuid import uuid4
@@ -8,7 +9,12 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload, selectinload
 
-from app.models.enums import ClassSessionStatus, TeacherStatus
+from app.models.assignment import TeacherAssignmentEvent
+from app.models.enums import (
+    ClassSessionStatus,
+    TeacherAssignmentMethod,
+    TeacherStatus,
+)
 from app.models.room import Room
 from app.models.schedule import ClassSession, ScheduleTemplate
 from app.models.teacher import TeacherProfile
@@ -44,6 +50,42 @@ class GenerationResult:
     issues: list[GenerationIssue]
     existing_count: int
     blocked_count: int
+
+
+@dataclass(frozen=True)
+class TeacherScoreBreakdown:
+    weekly_load_minutes: int
+    weekly_load_penalty: int
+    recent_total_sessions: int
+    recent_total_penalty: int
+    recent_same_level_sessions: int
+    recent_same_level_penalty: int
+    recent_same_template_sessions: int
+    recent_same_template_penalty: int
+    recent_same_slot_sessions: int
+    recent_same_slot_penalty: int
+
+    @property
+    def total_penalty(self) -> int:
+        return (
+            self.weekly_load_penalty
+            + self.recent_total_penalty
+            + self.recent_same_level_penalty
+            + self.recent_same_template_penalty
+            + self.recent_same_slot_penalty
+        )
+
+    def as_dict(self) -> dict[str, int]:
+        return {**self.__dict__, "total_penalty": self.total_penalty}
+
+
+@dataclass(frozen=True)
+class TeacherCandidate:
+    teacher: TeacherProfile
+    eligible: bool
+    ineligibility_reason: str | None
+    score: int | None
+    breakdown: TeacherScoreBreakdown | None
 
 
 class ClassSessionService:
@@ -134,7 +176,7 @@ class ClassSessionService:
                     GenerationIssue(template.id, session_date, "Conflicto de salón")
                 )
                 continue
-            teacher = self._select_teacher(
+            candidate = self._select_teacher(
                 actor,
                 teachers,
                 sessions_in_week,
@@ -157,7 +199,7 @@ class ClassSessionService:
                 branch_id=template.branch_id,
                 room_id=template.room_id,
                 level_id=template.level_id,
-                teacher_id=teacher.id if teacher else None,
+                teacher_id=candidate.teacher.id if candidate else None,
                 title=template.name,
                 session_date=session_date,
                 start_time=template.start_time,
@@ -170,9 +212,21 @@ class ClassSessionService:
                 updated_by_user_id=actor.id,
             )
             self.db.add(session)
+            self.db.flush()
+            if candidate is not None:
+                self._record_assignment(
+                    session=session,
+                    actor=actor,
+                    previous_teacher_id=None,
+                    new_teacher_id=candidate.teacher.id,
+                    method=TeacherAssignmentMethod.AUTO_GENERATION,
+                    score=candidate.score,
+                    breakdown=candidate.breakdown,
+                    reason="Asignación automática durante la generación semanal",
+                )
             sessions_in_week.append(session)
             created.append(session)
-            if teacher is None:
+            if candidate is None:
                 issues.append(
                     GenerationIssue(template.id, session_date, "Sin profesor disponible")
                 )
@@ -234,12 +288,28 @@ class ClassSessionService:
         return item
 
     def update(
-        self, actor: User, session_id: int, changes: dict[str, object]
+        self,
+        actor: User,
+        session_id: int,
+        changes: dict[str, object],
+        *,
+        assignment_method: TeacherAssignmentMethod = TeacherAssignmentMethod.MANUAL,
+        assignment_score: int | None = None,
+        assignment_breakdown: TeacherScoreBreakdown | None = None,
     ) -> ClassSession:
         item = self.get(actor, session_id)
         if item.status == ClassSessionStatus.CANCELLED.value:
             raise SessionGenerationError("Una sesión cancelada no puede modificarse")
+        assignment_reason = self._clean(changes.pop("assignment_reason", None))
+        previous_teacher_id = item.teacher_id
         teacher_id = changes.get("teacher_id", item.teacher_id)
+        teacher_changed = "teacher_id" in changes and teacher_id != previous_teacher_id
+        if (
+            teacher_changed
+            and assignment_method == TeacherAssignmentMethod.MANUAL
+            and assignment_reason is None
+        ):
+            raise SessionGenerationError("El motivo de reasignación es obligatorio")
         room_id = changes.get("room_id", item.room_id)
         configured = changes.get("configured_capacity", item.configured_capacity)
         status = changes.get("status", item.status)
@@ -308,12 +378,85 @@ class ClassSessionService:
             if field in changes:
                 setattr(item, field, changes[field])
         item.updated_by_user_id = actor.id
+        if teacher_changed:
+            self._record_assignment(
+                session=item,
+                actor=actor,
+                previous_teacher_id=previous_teacher_id,
+                new_teacher_id=teacher_id,
+                method=assignment_method,
+                score=assignment_score,
+                breakdown=assignment_breakdown,
+                reason=assignment_reason,
+            )
         try:
             self.db.commit()
         except IntegrityError as error:
             self.db.rollback()
             raise ClassSessionConflictError("No fue posible actualizar la sesión") from error
         return self.get(actor, item.id)
+
+    def teacher_candidates(
+        self, actor: User, session_id: int
+    ) -> list[TeacherCandidate]:
+        item = self.get(actor, session_id)
+        week_start = item.session_date - timedelta(days=item.session_date.weekday())
+        week_end = week_start + timedelta(days=6)
+        week_sessions = self._sessions_between(
+            item.organization_id, week_start, week_end, include_cancelled=False
+        )
+        recent_sessions = self._sessions_between(
+            item.organization_id,
+            week_start - timedelta(days=28),
+            week_start - timedelta(days=1),
+            include_cancelled=False,
+        )
+        return self._rank_teacher_candidates(
+            actor,
+            self._teachers(item.organization_id, active_only=False),
+            week_sessions,
+            recent_sessions,
+            item,
+            week_start,
+            week_end,
+        )
+
+    def assign_best_teacher(
+        self, actor: User, session_id: int, *, reason: str | None = None
+    ) -> ClassSession:
+        candidates = self.teacher_candidates(actor, session_id)
+        best = next((item for item in candidates if item.eligible), None)
+        if best is None:
+            raise SessionGenerationError("No hay profesores elegibles para esta sesión")
+        return self.update(
+            actor,
+            session_id,
+            {
+                "teacher_id": best.teacher.id,
+                "assignment_reason": reason or "Asignación de la mejor recomendación",
+            },
+            assignment_method=TeacherAssignmentMethod.AUTO_RECOMMENDATION,
+            assignment_score=best.score,
+            assignment_breakdown=best.breakdown,
+        )
+
+    def assignment_history(
+        self, actor: User, session_id: int
+    ) -> list[TeacherAssignmentEvent]:
+        item = self.get(actor, session_id)
+        return list(
+            self.db.scalars(
+                select(TeacherAssignmentEvent)
+                .where(
+                    TeacherAssignmentEvent.organization_id == item.organization_id,
+                    TeacherAssignmentEvent.session_id == item.id,
+                )
+                .order_by(
+                    TeacherAssignmentEvent.created_at,
+                    TeacherAssignmentEvent.id,
+                )
+            )
+        )
 
     def _select_teacher(
         self,
@@ -325,37 +468,102 @@ class ClassSessionService:
         session_date: date,
         week_start: date,
         week_end: date,
-    ) -> TeacherProfile | None:
-        eligible = []
+    ) -> TeacherCandidate | None:
         proxy = _SessionSlot(
             branch_id=template.branch_id,
             level_id=template.level_id,
+            source_template_id=template.id,
             session_date=session_date,
             start_time=template.start_time,
             end_time=template.end_time,
             room_id=template.room_id,
         )
+        candidates = self._rank_teacher_candidates(
+            actor,
+            teachers,
+            week_sessions,
+            recent_sessions,
+            proxy,
+            week_start,
+            week_end,
+        )
+        return next((item for item in candidates if item.eligible), None)
+
+    def _rank_teacher_candidates(
+        self,
+        actor: User,
+        teachers: list[TeacherProfile],
+        week_sessions: list[ClassSession],
+        recent_sessions: list[ClassSession],
+        slot: ClassSession | _SessionSlot,
+        week_start: date,
+        week_end: date,
+    ) -> list[TeacherCandidate]:
+        candidates: list[TeacherCandidate] = []
         for teacher in teachers:
-            if not self._teacher_is_eligible(actor, teacher, proxy, week_sessions):
+            reason = self._teacher_ineligibility_reason(
+                actor, teacher, slot, week_sessions
+            )
+            if reason is not None:
+                candidates.append(TeacherCandidate(teacher, False, reason, None, None))
                 continue
             weekly_minutes = sum(
                 self._duration_minutes(item.start_time, item.end_time)
                 for item in week_sessions
                 if item.teacher_id == teacher.id
                 and week_start <= item.session_date <= week_end
+                and getattr(slot, "id", None) != item.id
+            )
+            recent_total = sum(
+                1 for item in recent_sessions if item.teacher_id == teacher.id
             )
             repeated_level = sum(
                 1
                 for item in recent_sessions
-                if item.teacher_id == teacher.id and item.level_id == template.level_id
+                if item.teacher_id == teacher.id and item.level_id == slot.level_id
             )
-            total_recent = sum(
-                1 for item in recent_sessions if item.teacher_id == teacher.id
+            repeated_template = sum(
+                1
+                for item in recent_sessions
+                if item.teacher_id == teacher.id
+                and item.source_template_id == slot.source_template_id
             )
-            eligible.append(
-                ((weekly_minutes, repeated_level, total_recent, teacher.id), teacher)
+            repeated_slot = sum(
+                1
+                for item in recent_sessions
+                if item.teacher_id == teacher.id
+                and item.session_date.weekday() == slot.session_date.weekday()
+                and item.start_time == slot.start_time
             )
-        return min(eligible, key=lambda item: item[0])[1] if eligible else None
+            breakdown = TeacherScoreBreakdown(
+                weekly_load_minutes=weekly_minutes,
+                weekly_load_penalty=round(weekly_minutes * 20 / 60),
+                recent_total_sessions=recent_total,
+                recent_total_penalty=recent_total * 4,
+                recent_same_level_sessions=repeated_level,
+                recent_same_level_penalty=repeated_level * 15,
+                recent_same_template_sessions=repeated_template,
+                recent_same_template_penalty=repeated_template * 35,
+                recent_same_slot_sessions=repeated_slot,
+                recent_same_slot_penalty=repeated_slot * 10,
+            )
+            candidates.append(
+                TeacherCandidate(
+                    teacher,
+                    True,
+                    None,
+                    1000 - breakdown.total_penalty,
+                    breakdown,
+                )
+            )
+        return sorted(
+            candidates,
+            key=lambda item: (
+                not item.eligible,
+                -(item.score if item.score is not None else -10_000),
+                item.teacher.id,
+            ),
+        )
 
     def _teacher_is_eligible(
         self,
@@ -364,12 +572,21 @@ class ClassSessionService:
         slot: ClassSession | _SessionSlot,
         sessions: list[ClassSession],
     ) -> bool:
+        return self._teacher_ineligibility_reason(actor, teacher, slot, sessions) is None
+
+    def _teacher_ineligibility_reason(
+        self,
+        actor: User,
+        teacher: TeacherProfile,
+        slot: ClassSession | _SessionSlot,
+        sessions: list[ClassSession],
+    ) -> str | None:
         if teacher.status != TeacherStatus.ACTIVE.value:
-            return False
+            return "Profesor inactivo"
         if slot.branch_id not in {item.branch_id for item in teacher.branch_assignments}:
-            return False
+            return "Profesor no asignado a la sucursal"
         if slot.level_id not in {item.level_id for item in teacher.level_assignments}:
-            return False
+            return "Profesor no autorizado para el nivel"
         exception = next(
             (
                 item
@@ -380,7 +597,7 @@ class ClassSessionService:
         )
         if exception is not None:
             if not exception.is_available:
-                return False
+                return "Excepción de disponibilidad no permite la sesión"
             available = (
                 exception.start_time <= slot.start_time
                 and exception.end_time >= slot.end_time
@@ -393,7 +610,7 @@ class ClassSessionService:
                 for block in teacher.recurring_availability
             )
         if not available:
-            return False
+            return "Fuera de la disponibilidad del profesor"
         if any(
             item.teacher_id == teacher.id
             and item.session_date == slot.session_date
@@ -406,7 +623,7 @@ class ClassSessionService:
             )
             for item in sessions
         ):
-            return False
+            return "El profesor ya tiene otra sesión en ese horario"
         if ScheduleService(self.db).matching_exceptions(
             actor,
             target_date=slot.session_date,
@@ -416,25 +633,29 @@ class ClassSessionService:
             start_time=slot.start_time,
             end_time=slot.end_time,
         ):
-            return False
-        return True
+            return "El calendario tiene una excepción para el profesor"
+        return None
 
-    def _teachers(self, organization_id: int) -> list[TeacherProfile]:
-        return list(
-            self.db.scalars(
-                select(TeacherProfile)
-                .options(
-                    selectinload(TeacherProfile.branch_assignments),
-                    selectinload(TeacherProfile.level_assignments),
-                    selectinload(TeacherProfile.recurring_availability),
-                    selectinload(TeacherProfile.availability_exceptions),
-                )
-                .where(
-                    TeacherProfile.organization_id == organization_id,
-                    TeacherProfile.status == TeacherStatus.ACTIVE.value,
-                )
-                .order_by(TeacherProfile.id)
+    def _teachers(
+        self, organization_id: int, *, active_only: bool = True
+    ) -> list[TeacherProfile]:
+        statement = (
+            select(TeacherProfile)
+            .options(
+                selectinload(TeacherProfile.branch_assignments),
+                selectinload(TeacherProfile.level_assignments),
+                selectinload(TeacherProfile.recurring_availability),
+                selectinload(TeacherProfile.availability_exceptions),
             )
+            .where(TeacherProfile.organization_id == organization_id)
+            .order_by(TeacherProfile.id)
+        )
+        if active_only:
+            statement = statement.where(
+                TeacherProfile.status == TeacherStatus.ACTIVE.value
+            )
+        return list(
+            self.db.scalars(statement)
         )
 
     def _sessions_between(
@@ -455,6 +676,36 @@ class ClassSessionService:
                 ClassSession.status != ClassSessionStatus.CANCELLED.value
             )
         return list(self.db.scalars(statement))
+
+    def _record_assignment(
+        self,
+        *,
+        session: ClassSession,
+        actor: User,
+        previous_teacher_id: int | None,
+        new_teacher_id: int | None,
+        method: TeacherAssignmentMethod,
+        score: int | None,
+        breakdown: TeacherScoreBreakdown | None,
+        reason: str | None,
+    ) -> None:
+        self.db.add(
+            TeacherAssignmentEvent(
+                organization_id=session.organization_id,
+                session_id=session.id,
+                previous_teacher_id=previous_teacher_id,
+                new_teacher_id=new_teacher_id,
+                method=method.value,
+                score=score,
+                score_breakdown=(
+                    json.dumps(breakdown.as_dict(), sort_keys=True)
+                    if breakdown is not None
+                    else None
+                ),
+                reason=self._clean(reason),
+                actor_user_id=actor.id,
+            )
+        )
 
     @staticmethod
     def _has_room_conflict(
@@ -523,6 +774,7 @@ class _SessionSlot:
     branch_id: int
     room_id: int
     level_id: int
+    source_template_id: int
     session_date: date
     start_time: time
     end_time: time

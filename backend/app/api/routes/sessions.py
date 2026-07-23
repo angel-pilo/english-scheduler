@@ -1,3 +1,4 @@
+import json
 from datetime import date
 from typing import NoReturn
 
@@ -11,9 +12,13 @@ from app.models.user import User
 from app.schemas.sessions import (
     ClassSessionOut,
     ClassSessionUpdateIn,
+    AssignBestTeacherIn,
     GenerateWeekIn,
     GenerateWeekOut,
     GenerationIssueOut,
+    TeacherAssignmentEventOut,
+    TeacherCandidateOut,
+    TeacherScoreBreakdownOut,
 )
 from app.services.session_generation import (
     ClassSessionConflictError,
@@ -97,6 +102,89 @@ def get_class_session(
         return ClassSessionOut.model_validate(
             ClassSessionService(db).get(actor, session_id)
         )
+    except SessionGenerationError as error:
+        _raise_session(error)
+
+
+@router.get(
+    "/admin/class-sessions/{session_id}/teacher-candidates",
+    response_model=list[TeacherCandidateOut],
+)
+def get_teacher_candidates(
+    session_id: int,
+    db: Session = Depends(get_db),
+    actor: User = Depends(require_permission(PermissionCode.SCHEDULE_MANAGE)),
+) -> list[TeacherCandidateOut]:
+    try:
+        result = []
+        for item in ClassSessionService(db).teacher_candidates(actor, session_id):
+            breakdown = (
+                TeacherScoreBreakdownOut(**item.breakdown.as_dict())
+                if item.breakdown is not None
+                else None
+            )
+            result.append(
+                TeacherCandidateOut(
+                    teacher_id=item.teacher.id,
+                    teacher_name=f"{item.teacher.first_name} {item.teacher.last_name}".strip(),
+                    eligible=item.eligible,
+                    ineligibility_reason=item.ineligibility_reason,
+                    score=item.score,
+                    breakdown=breakdown,
+                )
+            )
+        return result
+    except SessionGenerationError as error:
+        _raise_session(error)
+
+
+@router.post(
+    "/admin/class-sessions/{session_id}/assign-best-teacher",
+    response_model=ClassSessionOut,
+)
+def assign_best_teacher(
+    session_id: int,
+    payload: AssignBestTeacherIn,
+    db: Session = Depends(get_db),
+    actor: User = Depends(require_permission(PermissionCode.SCHEDULE_MANAGE)),
+) -> ClassSessionOut:
+    try:
+        return ClassSessionOut.model_validate(
+            ClassSessionService(db).assign_best_teacher(
+                actor, session_id, reason=payload.reason
+            )
+        )
+    except SessionGenerationError as error:
+        _raise_session(error)
+
+
+@router.get(
+    "/admin/class-sessions/{session_id}/assignment-history",
+    response_model=list[TeacherAssignmentEventOut],
+)
+def get_assignment_history(
+    session_id: int,
+    db: Session = Depends(get_db),
+    actor: User = Depends(require_permission(PermissionCode.SCHEDULE_MANAGE)),
+) -> list[TeacherAssignmentEventOut]:
+    try:
+        return [
+            TeacherAssignmentEventOut(
+                id=item.id,
+                session_id=item.session_id,
+                previous_teacher_id=item.previous_teacher_id,
+                new_teacher_id=item.new_teacher_id,
+                method=item.method,
+                score=item.score,
+                score_breakdown=(
+                    json.loads(item.score_breakdown) if item.score_breakdown else None
+                ),
+                reason=item.reason,
+                actor_user_id=item.actor_user_id,
+                created_at=item.created_at,
+            )
+            for item in ClassSessionService(db).assignment_history(actor, session_id)
+        ]
     except SessionGenerationError as error:
         _raise_session(error)
 

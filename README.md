@@ -98,6 +98,12 @@ Los cierres y bloqueos de calendario se registran en `/admin/schedule-exceptions
 
 Los administradores consultan y ajustan sesiones mediante `/admin/class-sessions`. Una sesión no puede publicarse sin profesor y su cupo efectivo nunca supera la capacidad física del salón. Cada profesor consulta únicamente sus sesiones publicadas en `GET /teachers/me/sessions`.
 
+## Asignación de profesores
+
+La generación semanal clasifica únicamente profesores disponibles, autorizados para el nivel y sin conflictos. El ranking parte de 1000 puntos y descuenta penalizaciones visibles por carga semanal, carga reciente, repetición de nivel, repetición del mismo grupo y repetición de franja horaria.
+
+Los administradores pueden revisar el desglose en `/admin/class-sessions/{id}/teacher-candidates`, aplicar la mejor recomendación o seleccionar manualmente otro profesor con un motivo obligatorio. Cada asignación automática, recomendada o manual queda preservada en `/admin/class-sessions/{id}/assignment-history`.
+
 ## Reservaciones
 
 Las políticas de reservación se configuran globalmente o por sucursal mediante `/admin/booking-policies`. La configuración inicial exige 24 horas de anticipación para reservar o cancelar y permite reservar la semana siguiente; también admite múltiples ventanas horarias por día.
