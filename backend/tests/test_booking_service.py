@@ -3,6 +3,7 @@ from datetime import date, datetime, time, timedelta, timezone
 from decimal import Decimal
 
 import pytest
+from pydantic import ValidationError
 from sqlalchemy import create_engine, event
 from sqlalchemy.orm import Session
 
@@ -10,6 +11,7 @@ from app.db.base import Base
 from app.models.branch import Branch
 from app.models.curriculum import StudentLevelHistory
 from app.models.enums import (
+    AttendanceStatus,
     BookingStatus,
     ClassSessionStatus,
     StudentStatus,
@@ -31,6 +33,12 @@ from app.services.bookings import (
     BookingPolicyService,
     BookingService,
 )
+from app.schemas.attendance import AttendanceItemIn
+from app.services.attendance import (
+    AttendanceAccessError,
+    AttendanceConflictError,
+    AttendanceService,
+)
 from app.services.waitlists import (
     NotificationService,
     WaitlistConflictError,
@@ -40,6 +48,7 @@ from app.services.waitlists import (
 
 
 NOW = datetime(2026, 8, 3, 10, tzinfo=timezone.utc)
+AFTER_CLASS_START = datetime(2026, 8, 10, 8, tzinfo=timezone.utc)
 
 
 @dataclass
@@ -517,3 +526,186 @@ def test_notification_can_only_be_read_by_its_owner(session: Session) -> None:
         NotificationService(session).mark_read(other_user, notification.id, now=NOW)
     read = NotificationService(session).mark_read(waiting_user, notification.id, now=NOW)
     assert read.read_at is not None
+
+
+def test_attendance_roster_comes_from_active_bookings(session: Session) -> None:
+    tenant = _tenant(session)
+    first_user, _ = _student(session, tenant, 1)
+    second_user, _ = _student(session, tenant, 2)
+    class_session = _class_session(session, tenant)
+    booking_service = BookingService(session)
+    first = booking_service.create_for_self(first_user, class_session.id, now=NOW)
+    second = booking_service.create_for_self(second_user, class_session.id, now=NOW)
+    booking_service.cancel_for_self(second_user, second.id, reason=None, now=NOW)
+
+    roster = AttendanceService(session).roster(tenant.admin, class_session.id)
+
+    assert [item.booking.id for item in roster] == [first.id]
+    assert roster[0].attendance is None
+
+
+def test_admin_records_late_and_justified_attendance(session: Session) -> None:
+    tenant = _tenant(session)
+    first_user, _ = _student(session, tenant, 1)
+    second_user, _ = _student(session, tenant, 2)
+    class_session = _class_session(session, tenant)
+    booking_service = BookingService(session)
+    first = booking_service.create_for_self(first_user, class_session.id, now=NOW)
+    second = booking_service.create_for_self(second_user, class_session.id, now=NOW)
+
+    roster = AttendanceService(session).save(
+        tenant.admin,
+        class_session.id,
+        [
+            {
+                "booking_id": first.id,
+                "status": AttendanceStatus.LATE,
+                "minutes_late": 12,
+                "justification": None,
+                "observations": "Llegó después del inicio",
+            },
+            {
+                "booking_id": second.id,
+                "status": AttendanceStatus.JUSTIFIED,
+                "minutes_late": None,
+                "justification": "Comprobante médico",
+                "observations": None,
+            },
+        ],
+        correction_reason=None,
+        now=AFTER_CLASS_START,
+    )
+
+    statuses = {item.booking.id: item.attendance.status for item in roster}
+    assert statuses == {first.id: "LATE", second.id: "JUSTIFIED"}
+    assert len(AttendanceService(session).history(tenant.admin, class_session.id)) == 2
+
+
+def test_attendance_correction_requires_reason_and_preserves_history(
+    session: Session,
+) -> None:
+    tenant = _tenant(session)
+    user, _ = _student(session, tenant, 1)
+    class_session = _class_session(session, tenant)
+    booking = BookingService(session).create_for_self(user, class_session.id, now=NOW)
+    service = AttendanceService(session)
+    initial = {
+        "booking_id": booking.id,
+        "status": AttendanceStatus.PRESENT,
+        "minutes_late": None,
+        "justification": None,
+        "observations": None,
+    }
+    service.save(
+        tenant.admin,
+        class_session.id,
+        [initial],
+        correction_reason=None,
+        now=AFTER_CLASS_START,
+    )
+    correction = {**initial, "status": AttendanceStatus.ABSENT}
+
+    with pytest.raises(AttendanceConflictError, match="motivo"):
+        service.save(
+            tenant.admin,
+            class_session.id,
+            [correction],
+            correction_reason=None,
+            now=AFTER_CLASS_START,
+        )
+
+    service.save(
+        tenant.admin,
+        class_session.id,
+        [correction],
+        correction_reason="Corrección de captura",
+        now=AFTER_CLASS_START,
+    )
+    history = service.history(tenant.admin, class_session.id)
+    assert len(history) == 2
+    assert history[-1].reason == "Corrección de captura"
+    assert '"status": "PRESENT"' in history[-1].previous_values
+
+
+def test_assigned_teacher_can_record_but_other_teacher_cannot(session: Session) -> None:
+    tenant = _tenant(session)
+    student_user, _ = _student(session, tenant, 1)
+    class_session = _class_session(session, tenant)
+    booking = BookingService(session).create_for_self(
+        student_user, class_session.id, now=NOW
+    )
+    assigned_user = session.get(User, tenant.teacher.user_id)
+    other_user = User(
+        organization_id=tenant.admin.organization_id,
+        branch_id=tenant.branch.id,
+        name="Other Teacher",
+        email="other-teacher@test.local",
+        hashed_password="hash",
+        role=UserRole.TEACHER.value,
+    )
+    other_teacher = TeacherProfile(
+        organization_id=tenant.admin.organization_id,
+        user=other_user,
+        employee_number="T-2",
+        first_name="Other",
+        last_name="Teacher",
+        hire_date=date(2026, 1, 1),
+    )
+    session.add(other_teacher)
+    session.commit()
+    payload = [
+        {
+            "booking_id": booking.id,
+            "status": AttendanceStatus.PRESENT,
+            "minutes_late": None,
+            "justification": None,
+            "observations": None,
+        }
+    ]
+
+    AttendanceService(session).save(
+        assigned_user,
+        class_session.id,
+        payload,
+        correction_reason=None,
+        now=AFTER_CLASS_START,
+    )
+    with pytest.raises(AttendanceAccessError, match="no está asignado"):
+        AttendanceService(session).roster(other_user, class_session.id)
+
+
+def test_attendance_cannot_be_recorded_before_session_starts(session: Session) -> None:
+    tenant = _tenant(session)
+    user, _ = _student(session, tenant, 1)
+    class_session = _class_session(session, tenant)
+    booking = BookingService(session).create_for_self(user, class_session.id, now=NOW)
+
+    with pytest.raises(AttendanceConflictError, match="antes de iniciar"):
+        AttendanceService(session).save(
+            tenant.admin,
+            class_session.id,
+            [
+                {
+                    "booking_id": booking.id,
+                    "status": AttendanceStatus.PRESENT,
+                    "minutes_late": None,
+                    "justification": None,
+                    "observations": None,
+                }
+            ],
+            correction_reason=None,
+            now=NOW,
+        )
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {"booking_id": 1, "status": "LATE"},
+        {"booking_id": 1, "status": "PRESENT", "minutes_late": 5},
+        {"booking_id": 1, "status": "JUSTIFIED"},
+    ],
+)
+def test_attendance_schema_rejects_invalid_status_details(payload: dict) -> None:
+    with pytest.raises(ValidationError):
+        AttendanceItemIn.model_validate(payload)

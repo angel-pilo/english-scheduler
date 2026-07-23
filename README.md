@@ -116,6 +116,12 @@ Cuando una sesión está llena, el alumno puede unirse a `/students/me/waitlist`
 
 Mientras una oferta está vigente, el lugar queda apartado. El alumno debe aceptarla explícitamente; si vence o abandona la cola, el siguiente recibe la oportunidad. Los avisos quedan disponibles en `/notifications`, y el administrador puede consultar la cola o procesar vencimientos desde `/admin/waitlist`.
 
+## Asistencia
+
+El roster de asistencia se construye desde las reservaciones activas de cada sesión y muestra `PENDING` hasta que exista una captura. El profesor asignado registra presente, ausente, retardo o falta justificada desde `/teachers/me/sessions/{id}/attendance`; los retardos requieren minutos y las justificaciones requieren texto.
+
+Los administradores pueden consultar y corregir la asistencia desde `/admin/class-sessions/{id}/attendance`. Toda modificación posterior exige un motivo y conserva los valores anteriores y nuevos en el historial de la sesión.
+
 ## Niveles, currícula y progreso
 
 Los niveles son configurables por organización mediante `/admin/levels`. Cada nivel puede organizarse en capítulos y temas ordenados usando `/admin/levels/{id}/chapters`, `/admin/chapters/{id}/topics` y sus endpoints de actualización o desactivación. Los usuarios autenticados consultan la estructura activa completa en `GET /curriculum`.

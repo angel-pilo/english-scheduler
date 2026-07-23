@@ -105,3 +105,11 @@ class TeacherAssignmentMethod(str, Enum):
     AUTO_GENERATION = "AUTO_GENERATION"
     AUTO_RECOMMENDATION = "AUTO_RECOMMENDATION"
     MANUAL = "MANUAL"
+
+
+class AttendanceStatus(str, Enum):
+    PENDING = "PENDING"
+    PRESENT = "PRESENT"
+    ABSENT = "ABSENT"
+    LATE = "LATE"
+    JUSTIFIED = "JUSTIFIED"

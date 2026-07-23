@@ -1,5 +1,6 @@
 from app.models.auth_session import AuthSession
 from app.models.assignment import TeacherAssignmentEvent
+from app.models.attendance import AttendanceEvent, AttendanceRecord
 from app.models.booking import Booking, BookingEvent, BookingPolicy, BookingPolicyTimeBlock
 from app.models.branch import Branch
 from app.models.invitation import Invitation
@@ -29,6 +30,8 @@ from app.models.waitlist import BookingWaitlist, Notification
 __all__ = [
     "AuthSession",
     "TeacherAssignmentEvent",
+    "AttendanceEvent",
+    "AttendanceRecord",
     "Booking",
     "BookingEvent",
     "BookingPolicy",
